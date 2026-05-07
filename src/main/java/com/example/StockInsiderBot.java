@@ -18,12 +18,16 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class StockInsiderBot {
 
     private static final String SEC_BASE = "https://www.sec.gov/Archives/edgar/";
     private static final String TICKER_URL = "https://www.sec.gov/include/ticker.txt";
     private static final String NTFY_URL = "https://ntfy.sh/";
+    private static final String DEFAULT_SEC_USER_AGENT = "SEC4-Insider-Bot AdminContact@example.com";
+    private static final String DEFAULT_SEC_CONTACT_EMAIL = "contact@example.com";
     private static final long DEFAULT_MINIMUM_USD = 500_000L;
     private static final int DEFAULT_MAX_LOOKBACK_DAYS = 1;
     private static final boolean DEFAULT_DEBUG = true;
@@ -45,11 +49,8 @@ public class StockInsiderBot {
             int maxLookbackDays = parseInt(firstNonBlank(options.get("lookback"), System.getenv("LOOKBACK_DAYS")),
                     DEFAULT_MAX_LOOKBACK_DAYS);
             boolean debug = parseBoolean(firstNonBlank(options.get("debug"), System.getenv("DEBUG")), DEFAULT_DEBUG);
-            boolean mock = parseBoolean(firstNonBlank(options.get("mock"), System.getenv("MOCK")), false);
             setDebug(debug);
-            setMock(mock);
             logDebug("Debug mode enabled: " + debug);
-            logDebug("Mock mode enabled: " + mock);
             logDebug("Tickers: " + tickersArg);
             logDebug("Threshold: " + minimumUsd);
             logDebug("Lookback days: " + maxLookbackDays);
@@ -78,22 +79,30 @@ public class StockInsiderBot {
             }
 
             LocalDate currentDate = LocalDate.now().minusDays(1);
+            List<String> form4Urls = new ArrayList<>();
             MasterIndex masterIndex = findMasterIndex(currentDate, maxLookbackDays);
-            if (masterIndex == null) {
-                System.err.println("Unable to find a valid SEC master index in the last " + maxLookbackDays + " days.");
-                return;
+            if (masterIndex != null) {
+                form4Urls.addAll(parseMasterIdx(masterIndex.content, ciks));
+                logDebug("Master index lookup returned " + form4Urls.size() + " Form 4 URLs.");
+            } else {
+                logDebug("Unable to find a valid SEC master index in the last " + maxLookbackDays + " days.");
             }
 
-            List<String> form4Urls = parseMasterIdx(masterIndex.content, ciks);
             if (form4Urls.isEmpty()) {
-                System.out.println("No Form 4 filings found for provided tickers on " + masterIndex.indexDate + ".");
+                System.out.println("No Form 4 filings found in daily master index. Falling back to SEC browse API...");
+                form4Urls.addAll(fetchForm4UrlsFromEdgarBrowse(ciks, maxLookbackDays));
+                logDebug("Browse API fallback returned " + form4Urls.size() + " Form 4 XML URLs.");
+            }
+
+            if (form4Urls.isEmpty()) {
+                System.err.println("Unable to locate Form 4 filings for the requested tickers.");
                 return;
             }
 
             Set<String> uniqueAlerts = new LinkedHashSet<>();
             for (String url : form4Urls) {
                 try {
-                    String xml = mockEnabled ? getMockForm4Xml(url) : downloadText(url);
+                    String xml = downloadText(url);
                     uniqueAlerts.addAll(parseForm4(xml, minimumUsd));
                 } catch (Exception ex) {
                     System.err.println("Warning: failed to process Form 4 at " + url + " - " + ex.getMessage());
@@ -156,14 +165,9 @@ public class StockInsiderBot {
     }
 
     private static boolean debugEnabled = DEFAULT_DEBUG;
-    private static boolean mockEnabled = false;
 
     private static void setDebug(boolean enabled) {
         debugEnabled = enabled;
-    }
-
-    private static void setMock(boolean enabled) {
-        mockEnabled = enabled;
     }
 
     private static void logDebug(String message) {
@@ -212,10 +216,6 @@ public class StockInsiderBot {
     }
 
     private static Map<String, String> downloadTickerMapping() {
-        if (mockEnabled) {
-            logDebug("Using mock ticker mapping");
-            return new HashMap<>(FALLBACK_TICKER_MAP);
-        }
         Map<String, String> map = new HashMap<>();
         try {
             String content = downloadText(TICKER_URL);
@@ -314,11 +314,6 @@ public class StockInsiderBot {
     }
 
     private static MasterIndex findMasterIndex(LocalDate startDate, int maxLookbackDays) {
-        if (mockEnabled) {
-            logDebug("Using mock master index");
-            return new MasterIndex("20260507",
-                    "CIK|Company Name|Form Type|Date Filed|Filename\n0001555285|ZOETIS INC|4|20260507|edgar/data/1555285/0001193125-26-123456.txt\n");
-        }
         LocalDate date = startDate;
         for (int i = 0; i < maxLookbackDays; i++) {
             String dateStr = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
@@ -343,17 +338,18 @@ public class StockInsiderBot {
         for (int attempt = 1; attempt <= 3; attempt++) {
             try (CloseableHttpClient client = HttpClients.createDefault()) {
                 HttpGet get = new HttpGet(url);
-                get.setHeader("User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                String userAgent = firstNonBlank(System.getenv("SEC_USER_AGENT"), DEFAULT_SEC_USER_AGENT);
+                String contactEmail = firstNonBlank(System.getenv("SEC_CONTACT_EMAIL"), DEFAULT_SEC_CONTACT_EMAIL);
+                get.setHeader("User-Agent", userAgent);
                 get.setHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
                 get.setHeader("Accept-Language", "en-US,en;q=0.9");
-                get.setHeader("Accept-Encoding", "gzip, deflate, br");
+                get.setHeader("Accept-Encoding", "gzip, deflate");
                 get.setHeader("Cache-Control", "no-cache");
                 get.setHeader("Pragma", "no-cache");
                 get.setHeader("Connection", "keep-alive");
                 get.setHeader("Referer", "https://www.sec.gov/edgar/searchedgar/companies.htm");
-                get.setHeader("From", "contact@example.com");
-                get.setHeader("Contact", "contact@example.com");
+                get.setHeader("From", contactEmail);
+                get.setHeader("Contact", contactEmail);
                 get.setHeader("DNT", "1");
                 get.setHeader("Upgrade-Insecure-Requests", "1");
                 get.setHeader("Sec-Fetch-Dest", "document");
@@ -417,10 +413,87 @@ public class StockInsiderBot {
         return new ArrayList<>(urls);
     }
 
+    private static List<String> fetchForm4UrlsFromEdgarBrowse(Set<String> ciks, int maxLookbackDays) {
+        Set<String> urls = new LinkedHashSet<>();
+        for (String cik : ciks) {
+            try {
+                String browseUrl = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=" + cik
+                        + "&type=4&owner=include&count=100&output=atom";
+                logDebug("Fetching browse-edgar feed for CIK " + cik + ": " + browseUrl);
+                String atomXml = downloadText(browseUrl);
+                if (atomXml == null || atomXml.isBlank()) {
+                    continue;
+                }
+                urls.addAll(parseBrowseEdgarAtom(atomXml, maxLookbackDays));
+            } catch (Exception e) {
+                System.err.println("Warning: browse-edgar fallback failed for CIK " + cik + " - " + e.getMessage());
+            }
+        }
+        return new ArrayList<>(urls);
+    }
+
+    private static List<String> parseBrowseEdgarAtom(String atomXml, int maxLookbackDays) {
+        Set<String> urls = new LinkedHashSet<>();
+        LocalDate threshold = LocalDate.now().minusDays(maxLookbackDays);
+        Pattern entryPattern = Pattern.compile("<entry>(.*?)</entry>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern datePattern = Pattern.compile("<filing-date>(.*?)</filing-date>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern hrefPattern = Pattern.compile("<filing-href>(.*?)</filing-href>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Matcher entryMatcher = entryPattern.matcher(atomXml);
+        while (entryMatcher.find()) {
+            String entry = entryMatcher.group(1);
+            Matcher dateMatcher = datePattern.matcher(entry);
+            Matcher hrefMatcher = hrefPattern.matcher(entry);
+            if (!dateMatcher.find() || !hrefMatcher.find()) {
+                continue;
+            }
+            String filingDate = dateMatcher.group(1).trim();
+            String filingHref = hrefMatcher.group(1).trim();
+            try {
+                LocalDate date = LocalDate.parse(filingDate);
+                if (date.isBefore(threshold)) {
+                    continue;
+                }
+                String xmlUrl = findForm4XmlUrlFromIndexPage(filingHref);
+                if (xmlUrl != null) {
+                    urls.add(xmlUrl);
+                } else {
+                    logDebug("Unable to resolve form4.xml from index page: " + filingHref);
+                }
+            } catch (Exception e) {
+                logDebug("Skipping entry with invalid date or URL: " + e.getMessage());
+            }
+        }
+        return new ArrayList<>(urls);
+    }
+
+    private static String findForm4XmlUrlFromIndexPage(String indexUrl) {
+        try {
+            String html = downloadText(indexUrl);
+            if (html == null || html.isBlank()) {
+                return null;
+            }
+            Pattern xmlLinkPattern = Pattern.compile("href=\"([^\"]*?/form4\\.xml)\"", Pattern.CASE_INSENSITIVE);
+            Matcher matcher = xmlLinkPattern.matcher(html);
+            if (matcher.find()) {
+                String relative = matcher.group(1).trim();
+                if (relative.startsWith("http")) {
+                    return relative;
+                }
+                return "https://www.sec.gov" + relative;
+            }
+        } catch (Exception e) {
+            logDebug("Failed to parse filing index page " + indexUrl + " - " + e.getMessage());
+        }
+        return null;
+    }
+
     private static List<String> parseForm4(String xml, long minimumUsd) throws Exception {
         Set<String> alerts = new LinkedHashSet<>();
         XmlMapper mapper = new XmlMapper();
-        JsonNode root = mapper.readTree(xml);
+        String xmlPayload = extractXmlPayload(xml);
+        JsonNode root = mapper.readTree(xmlPayload);
 
         JsonNode issuer = root.path("issuer");
         String ticker = issuer.path("issuerTradingSymbol").asText(issuer.path("issuerCIK").asText("Unknown"));
@@ -595,46 +668,25 @@ public class StockInsiderBot {
         }
     }
 
-    private static String getMockForm4Xml(String url) {
-        logDebug("Using mock Form 4 XML for " + url);
-        // Mock XML for ZTS CEO sale of 20,000 shares
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                "<ownershipDocument>\n" +
-                "  <issuer>\n" +
-                "    <issuerTradingSymbol>ZTS</issuerTradingSymbol>\n" +
-                "    <issuerCIK>0001555285</issuerCIK>\n" +
-                "  </issuer>\n" +
-                "  <reportingOwner>\n" +
-                "    <reportingOwnerId>\n" +
-                "      <rptOwnerName>Kristin C. Peck</rptOwnerName>\n" +
-                "      <rptOwnerTitle>Chief Executive Officer</rptOwnerTitle>\n" +
-                "    </reportingOwnerId>\n" +
-                "    <reportingOwnerRelationship>\n" +
-                "      <officer>\n" +
-                "        <title>Chief Executive Officer</title>\n" +
-                "      </officer>\n" +
-                "    </reportingOwnerRelationship>\n" +
-                "  </reportingOwner>\n" +
-                "  <nonDerivativeTable>\n" +
-                "    <nonDerivativeTransaction>\n" +
-                "      <transactionCoding>\n" +
-                "        <transactionCode>S</transactionCode>\n" +
-                "        <is10b51Transaction>false</is10b51Transaction>\n" +
-                "      </transactionCoding>\n" +
-                "      <transactionAmounts>\n" +
-                "        <transactionShares>\n" +
-                "          <value>20000</value>\n" +
-                "        </transactionShares>\n" +
-                "        <transactionPricePerShare>\n" +
-                "          <value>180.00</value>\n" +
-                "        </transactionPricePerShare>\n" +
-                "      </transactionAmounts>\n" +
-                "      <securityTitle>\n" +
-                "        <value>Common Stock</value>\n" +
-                "      </securityTitle>\n" +
-                "    </nonDerivativeTransaction>\n" +
-                "  </nonDerivativeTable>\n" +
-                "</ownershipDocument>";
+    private static String extractXmlPayload(String rawText) {
+        if (rawText == null) {
+            return "";
+        }
+        int xmlWrapperStart = rawText.indexOf("<XML>");
+        if (xmlWrapperStart >= 0) {
+            int xmlWrapperEnd = rawText.indexOf("</XML>", xmlWrapperStart);
+            if (xmlWrapperEnd > xmlWrapperStart) {
+                return rawText.substring(xmlWrapperStart + 5, xmlWrapperEnd).trim();
+            }
+        }
+        int documentStart = rawText.indexOf("<ownershipDocument");
+        if (documentStart >= 0) {
+            int documentEnd = rawText.indexOf("</ownershipDocument>", documentStart);
+            if (documentEnd > documentStart) {
+                return rawText.substring(documentStart, documentEnd + "</ownershipDocument>".length()).trim();
+            }
+        }
+        return rawText;
     }
 
     private static boolean sendNotification(String message) {

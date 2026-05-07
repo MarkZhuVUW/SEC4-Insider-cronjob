@@ -24,6 +24,8 @@ on:
 
 env:
   NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+  SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+  SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
   TICKERS: ${{ github.event.inputs.tickers || 'AAPL,GOOGL' }}
   THRESHOLD_USD: ${{ github.event.inputs.threshold || '500000' }}
   LOOKBACK_DAYS: ${{ github.event.inputs.lookback || '1' }}
@@ -43,4 +45,4 @@ jobs:
           distribution: 'temurin'
 
       - name: Run bot
-        run: mvn exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }} --mock=${{ env.MOCK }}"
+        run: mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }} --mock=${{ env.MOCK }}"
