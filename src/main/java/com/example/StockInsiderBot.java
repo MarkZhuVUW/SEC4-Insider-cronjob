@@ -476,12 +476,24 @@ public class StockInsiderBot {
             }
             Pattern xmlLinkPattern = Pattern.compile("href=\"([^\"]*?/form4\\.xml)\"", Pattern.CASE_INSENSITIVE);
             Matcher matcher = xmlLinkPattern.matcher(html);
-            if (matcher.find()) {
+            String fallback = null;
+            while (matcher.find()) {
                 String relative = matcher.group(1).trim();
-                if (relative.startsWith("http")) {
-                    return relative;
+                if (!relative.toLowerCase(Locale.ROOT).contains("xslf345x06")) {
+                    if (relative.startsWith("http")) {
+                        return relative;
+                    }
+                    return "https://www.sec.gov" + relative;
                 }
-                return "https://www.sec.gov" + relative;
+                if (fallback == null) {
+                    fallback = relative;
+                }
+            }
+            if (fallback != null) {
+                if (fallback.startsWith("http")) {
+                    return fallback;
+                }
+                return "https://www.sec.gov" + fallback;
             }
         } catch (Exception e) {
             logDebug("Failed to parse filing index page " + indexUrl + " - " + e.getMessage());
