@@ -1,0 +1,46 @@
+name: Daily Insider Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'  # Weekdays at 9 AM UTC
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Comma-separated list of stock tickers'
+        required: true
+        default: 'AAPL,GOOGL'
+      threshold:
+        description: 'Minimum trade size in USD'
+        required: false
+        default: '500000'
+      lookback:
+        description: 'Days to search back for a valid SEC master index'
+        required: false
+        default: '1'
+      mock:
+        description: 'Use mock data for testing (true/false)'
+        required: false
+        default: 'false'
+
+env:
+  NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+  TICKERS: ${{ github.event.inputs.tickers || 'AAPL,GOOGL' }}
+  THRESHOLD_USD: ${{ github.event.inputs.threshold || '500000' }}
+  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || '1' }}
+  MOCK: ${{ github.event.inputs.mock || 'false' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Run bot
+        run: mvn exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }} --mock=${{ env.MOCK }}"
