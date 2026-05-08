@@ -303,7 +303,6 @@ public class StockInsiderBot {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Warning: could not download SEC ticker mapping - " + e.getMessage());
         }
         if (map.isEmpty()) {
             map.putAll(FALLBACK_TICKER_MAP);
@@ -343,7 +342,6 @@ public class StockInsiderBot {
                         foundDate = date;
                 }
             } catch (Exception e) {
-                logDebug("Could not download master index for " + date + " - " + e.getMessage());
             }
             date = date.minusDays(1);
         }
