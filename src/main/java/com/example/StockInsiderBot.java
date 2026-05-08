@@ -130,6 +130,7 @@ public class StockInsiderBot {
         } catch (Exception e) {
             System.err.println("Fatal error: " + e.getMessage());
             e.printStackTrace();
+            sendErrorNotification("Unexpected error occurred: " + e.getMessage());
             System.exit(1);
         }
     }
@@ -147,7 +148,7 @@ public class StockInsiderBot {
         final boolean is10b51;
 
         AlertEntry(String ownerName, String position, String type, String security,
-                   long shares, double price, double amount, boolean is10b51) {
+                long shares, double price, double amount, boolean is10b51) {
             this.ownerName = ownerName;
             this.position = position;
             this.type = type;
@@ -176,20 +177,19 @@ public class StockInsiderBot {
                 AlertEntry e = entries.get(i);
                 msg.append(String.format(
                         "  Owner:   %s\n" +
-                        "  Position:%s\n" +
-                        "  Action:  %s\n" +
-                        "  Security:%s\n" +
-                        "  Shares:  %,d\n" +
-                        "  Price:   $%,.2f\n" +
-                        "  Amount:  $%,.2f",
+                                "  Position:%s\n" +
+                                "  Action:  %s\n" +
+                                "  Security:%s\n" +
+                                "  Shares:  %,d\n" +
+                                "  Price:   $%,.2f\n" +
+                                "  Amount:  $%,.2f",
                         e.ownerName,
                         e.position,
                         e.type + (e.is10b51 ? " [10b5-1]" : ""),
                         e.security,
                         e.shares,
                         e.price,
-                        e.amount
-                ));
+                        e.amount));
                 // Blank line between transactions inside the same ticker
                 msg.append("\n");
             }
@@ -550,25 +550,18 @@ public class StockInsiderBot {
             }
             Pattern xmlLinkPattern = Pattern.compile("href=\"([^\"]*?/form4\\.xml)\"", Pattern.CASE_INSENSITIVE);
             Matcher matcher = xmlLinkPattern.matcher(html);
-            String fallback = null;
+            String bestUrl = null;
             while (matcher.find()) {
                 String relative = matcher.group(1).trim();
-                if (!relative.toLowerCase(Locale.ROOT).contains("xslf345x06")) {
-                    if (relative.startsWith("http")) {
-                        return relative;
-                    }
-                    return "https://www.sec.gov" + relative;
+                String fullUrl = relative.startsWith("http") ? relative : "https://www.sec.gov" + relative;
+                if (!relative.toLowerCase(Locale.ROOT).contains("xslf345")) {
+                    return fullUrl; // Prefer raw XML over HTML render
                 }
-                if (fallback == null) {
-                    fallback = relative;
+                if (bestUrl == null) {
+                    bestUrl = fullUrl;
                 }
             }
-            if (fallback != null) {
-                if (fallback.startsWith("http")) {
-                    return fallback;
-                }
-                return "https://www.sec.gov" + fallback;
-            }
+            return bestUrl;
         } catch (Exception e) {
             logDebug("Failed to parse filing index page " + indexUrl + " - " + e.getMessage());
         }
@@ -646,7 +639,7 @@ public class StockInsiderBot {
     }
 
     private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
-                                                  long minimumUsd) {
+            long minimumUsd) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
         if (!"P".equals(code) && !"S".equals(code)) {
             return null;
@@ -796,6 +789,36 @@ public class StockInsiderBot {
             System.err.println("Warning: failed to send notification: " + e.getMessage());
         }
         return false;
+    }
+
+    private static void sendErrorNotification(String errorMessage) {
+        String topic = System.getenv("NTFY_TOPIC");
+        if (topic == null || topic.isBlank()) {
+            System.err.println("Warning: NTFY_TOPIC is not set. Error notification will not be sent.");
+            return;
+        }
+
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(HTTP_TIMEOUT)
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(NTFY_URL + topic))
+                    .timeout(HTTP_TIMEOUT)
+                    .POST(HttpRequest.BodyPublishers.ofString(errorMessage))
+                    .header("Title", "Insider Bot Error")
+                    .header("Priority", "high")
+                    .build();
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                System.out.println("Error notification sent.");
+            } else {
+                System.err.println(
+                        "Warning: ntfy.sh returned status " + response.statusCode() + " for error notification.");
+            }
+        } catch (Exception e) {
+            System.err.println("Warning: failed to send error notification: " + e.getMessage());
+        }
     }
 
     private static class MasterIndex {

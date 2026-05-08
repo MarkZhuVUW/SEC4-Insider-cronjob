@@ -15,27 +15,24 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
 2. Set up ntfy.sh topic:
    - Go to https://ntfy.sh and create a topic (e.g., `mystockalerts`)
    - In your repo settings, add a secret `NTFY_TOPIC` with your topic name
-3. Install ntfy app on your phone and subscribe to your topic
-4. Run the workflow manually or wait for daily schedule
+3. **Configure repository variables** (optional, for cron job defaults):
+   - Go to your repository Settings → Secrets and variables → Variables
+   - Add variables:
+     - `TICKERS`: Comma-separated list of tickers (e.g., `AAPL,GOOGL,MSFT`)
+     - `THRESHOLD_USD`: Minimum trade size (e.g., `500000`)
+     - `LOOKBACK_DAYS`: Days to search back (e.g., `1`)
+   - If not set, cron job uses built-in defaults: `AAPL,GOOGL`, `500000`, `1`
+4. Install ntfy app on your phone and subscribe to your topic
+5. Run the workflow manually or wait for daily schedule
 
 ## Usage
 
-- **Manual run**: Go to Actions tab, select "Daily Insider Check", click "Run workflow", enter comma-separated tickers (e.g., AAPL,GOOGL,MSFT).
-- **Scheduled**: Runs daily automatically with default tickers (`AAPL,GOOGL`) from the workflow. Update `.github/workflows/daily-check.yml` to change the default list.
-- **Configuration**: The bot also supports the following environment variables:
-  - `TICKERS` — comma-separated ticker list.
-  - `THRESHOLD_USD` — minimum trade size, default `500000`.
-  - `LOOKBACK_DAYS` — how many recent days to search back to find a valid SEC daily index when yesterday is unavailable, default `1`.
-    - This does not mean the bot searches 1 day of trades.
-    - It only finds the latest available SEC index when yesterday is missing.
-    - If you run the bot every trading day, `LOOKBACK_DAYS=1` is usually the right setting.
-    - If you run on Monday or after a holiday, increase this to `3` so it can find the prior trading day.
-- **CLI usage**: In GitHub Actions or local run, you can also pass CLI options:
-  - `--tickers=AAPL,GOOGL,MSFT`
-  - `--threshold=500000`
-  - `--lookback=7`
-  - `--debug=false` (disable debug output)
-  - `--mock=true` (use mock data for testing, ignores SEC downloads)
+- **Manual run**: Go to Actions tab, select "Daily Insider Check", click "Run workflow", enter your desired tickers, threshold, and lookback days. Defaults are provided.
+- **Scheduled**: Runs daily automatically using repository variables if set, otherwise uses built-in defaults (`AAPL,GOOGL`, $500k, 1 day lookback).
+- **Configuration**: 
+  - **Repository Variables** (for cron job defaults): Set `TICKERS`, `THRESHOLD_USD`, `LOOKBACK_DAYS` in repo Settings → Variables
+  - **Environment Variables**: Can also be overridden via env vars in workflow
+  - **CLI options**: For local testing or custom runs
 
 ### Example local CLI commands
 
