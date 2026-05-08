@@ -11,23 +11,24 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
 
 ## Setup
 
-1. Fork this repository
-2. Set up Discord webhook for notifications:
-   - In your Discord server, go to Server Settings → Integrations → Webhooks
-   - Create a webhook and copy the webhook URL
-   - Add a repo secret named `DISCORD_WEBHOOK_URL` with that URL
-3. **Configure repository variables** (optional, for cron job defaults):
-   - Go to your repository Settings → Secrets and variables → Variables
-   - Add variables:
-     - `TICKERS`: Comma-separated list of tickers (e.g., `AAPL,GOOGL,MSFT`)
-     - `THRESHOLD_USD`: Minimum trade size (e.g., `500000`)
-     - `LOOKBACK_DAYS`: Days to search back (e.g., `1`)
-   - If not set, cron job uses built-in defaults: `AAPL,GOOGL`, `500000`, `1`
-4. Set up Discord webhook for notifications:
-   - In your Discord server, go to Server Settings → Integrations → Webhooks
-   - Create a webhook and copy the webhook URL
-   - Add a repo secret named `DISCORD_WEBHOOK_URL` with that URL
-5. Run the workflow manually or wait for daily schedule
+1. Fork this repository.
+2. Create a Discord webhook:
+   - Open your Discord server and go to `Server Settings` → `Integrations` → `Webhooks`.
+   - Click `New Webhook` and select a channel where you want alerts to appear.
+   - Copy the webhook URL.
+3. Add the webhook URL to GitHub secrets:
+   - Open your fork on GitHub and go to `Settings` → `Secrets and variables` → `Actions`.
+   - Add a new secret named `DISCORD_WEBHOOK_URL`.
+   - Paste the webhook URL as the value.
+4. (Optional) Configure repo variables for cron defaults:
+   - In `Settings` → `Secrets and variables` → `Variables`, add:
+     - `TICKERS`: Comma-separated tickers, e.g. `AAPL,GOOGL,MSFT`
+     - `THRESHOLD_USD`: Minimum trade size, e.g. `500000`
+     - `LOOKBACK_DAYS`: Lookback days, e.g. `1`
+   - If not set, defaults are `AAPL,GOOGL`, `500000`, `1`.
+5. Run the workflow manually or wait for the daily schedule:
+   - Go to the `Actions` tab, choose `Daily Insider Check`, then `Run workflow`.
+   - Enter tickers, threshold, and lookback values as needed.
 
 ## Usage
 
@@ -35,8 +36,7 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
 - **Scheduled**: Runs daily automatically using repository variables if set, otherwise uses built-in defaults (`AAPL,GOOGL`, $500k, 1 day lookback).
 - **Configuration**: 
   - **Repository Variables** (for cron job defaults): Set `TICKERS`, `THRESHOLD_USD`, `LOOKBACK_DAYS` in repo Settings → Variables
-  - **Environment Variables**: Can also be overridden via env vars in workflow
-  - **Push notification**: Set `DISCORD_WEBHOOK_URL` for Discord notifications.
+  - **GitHub secret**: Set `DISCORD_WEBHOOK_URL` in Settings → Secrets and variables → Actions
   - **CLI options**: For local testing or custom runs
   - **Ticker format**: `BRKB` or `BRK-B` are supported; `BRK.B` is not supported. Ticker input is case-insensitive.
 
