@@ -2,29 +2,30 @@ name: Daily Insider Check
 
 on:
   schedule:
-    - cron: '0 9 * * 1-5'  # Weekdays at 9 AM UTC
+    - cron: "0 9 * * *"
+      timezone: "Pacific/Auckland"
   workflow_dispatch:
     inputs:
       tickers:
-        description: 'Comma-separated list of stock tickers'
+        description: "Comma-separated list of stock tickers"
         required: false
-        default: 'BRKB,MSFT'
+        default: "NVDA,AMZN,AAPL,GOOGL,SOFI,TEAM,CROX,V,STZ,DVA,OXY,CRM,SIEGY,DPZ,TRI,EL,DIS,WDFC,AXP,WM,ELV,MOH,KO,LVMUY,COST,PDD,MCO,RKLB"
       threshold:
-        description: 'Minimum trade size in USD'
+        description: "Minimum trade size in USD"
         required: false
-        default: '500000'
+        default: "500000"
       lookback:
-        description: 'Days to search back for a valid SEC master index'
+        description: "Days to search back for a valid SEC master index"
         required: false
-        default: '1'
+        default: "1"
 
 env:
   DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
   SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
-  TICKERS: ${{ github.event.inputs.tickers || vars.TICKERS || 'AAPL,GOOGL' }}
-  THRESHOLD_USD: ${{ github.event.inputs.threshold || vars.THRESHOLD_USD || '500000' }}
-  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || vars.LOOKBACK_DAYS || '1' }}
+  TICKERS: ${{ vars.TICKERS || 'BRKB' }}
+  THRESHOLD_USD: ${{ vars.THRESHOLD_USD || '500000' }}
+  LOOKBACK_DAYS: ${{ vars.LOOKBACK_DAYS || '1' }}
 
 jobs:
   check:
@@ -36,10 +37,10 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
           # Also cache Maven dependencies (optional but speeds up even more)
-          cache: 'maven'
+          cache: "maven"
 
       - name: Cache Maven local repository
         uses: actions/cache@v4

@@ -170,9 +170,10 @@ public class StockInsiderBot {
         final double price;
         final double amount;
         final boolean is10b51;
+        final String transactionDate;
 
         AlertEntry(String ownerName, String position, String type, String security,
-                long shares, double price, double amount, boolean is10b51) {
+                long shares, double price, double amount, boolean is10b51, String transactionDate) {
             this.ownerName = ownerName;
             this.position = position;
             this.type = type;
@@ -181,6 +182,7 @@ public class StockInsiderBot {
             this.price = price;
             this.amount = amount;
             this.is10b51 = is10b51;
+            this.transactionDate = transactionDate;
         }
     }
 
@@ -189,15 +191,18 @@ public class StockInsiderBot {
             Set<String> tickersWithForm4,
             String indexDate) {
         StringBuilder msg = new StringBuilder();
-        msg.append("🔔 Insider Alerts (").append(indexDate).append(")\n\n");
+        msg.append("🔔⏰ Insider Alerts (").append(indexDate).append(")\n\n");
         for (String ticker : tickers) {
             msg.append("▶ ").append(ticker).append("\n");
             if (alertsByTicker.containsKey(ticker)) {
                 List<AlertEntry> entries = alertsByTicker.get(ticker);
                 for (AlertEntry e : entries) {
-                    String action = e.type + (e.is10b51 ? " [10b5-1]" : "");
-                    msg.append(String.format("  %s | %s | %s | %,d @ $%,.2f = $%,.2f\n",
-                            e.ownerName, e.position, action, e.shares, e.price, e.amount));
+                    String actionIcon = e.type.equals("BUY") ? "📈" : "📉";
+                    String planIcon = e.is10b51 ? " 🛡️[10b5-1]" : "";
+                    String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
+                    msg.append(String.format("  📅 %s 👤 %s | 💼 %s | %s %s%s | %,d @ $%,.2f = $%,.2f\n",
+                            date, e.ownerName, e.position, actionIcon, e.type, planIcon,
+                            e.shares, e.price, e.amount));
                 }
             } else if (tickersWithForm4.contains(ticker)) {
                 msg.append("  No transactions above threshold\n");
@@ -427,7 +432,6 @@ public class StockInsiderBot {
     }
 
     private static List<String> parseBrowseEdgarAtom(String atomXml, int maxLookbackDays) {
-        // ... 保持原样，无文件内容 log ...
         Set<String> urls = new LinkedHashSet<>();
         LocalDate threshold = LocalDate.now().minusDays(maxLookbackDays);
         Pattern entryPattern = Pattern.compile("<entry>(.*?)</entry>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
@@ -452,13 +456,12 @@ public class StockInsiderBot {
                 if (xmlUrl != null)
                     urls.add(xmlUrl);
             } catch (Exception e) {
-                /* skip */ }
+            }
         }
         return new ArrayList<>(urls);
     }
 
     private static String findForm4XmlUrlFromIndexPage(String indexUrl) {
-        // 保持原样
         try {
             String html = downloadText(indexUrl);
             if (html == null || html.isBlank())
@@ -503,7 +506,6 @@ public class StockInsiderBot {
         String ownerName = reportingOwner.path("reportingOwnerId").path("rptOwnerName").asText("Unknown Owner");
         String position = extractPosition(reportingOwner);
 
-        // 非衍生品表
         JsonNode nonDeriv = root.path("nonDerivativeTable");
         if (nonDeriv.isMissingNode())
             nonDeriv = root.path("ownershipDocument").path("nonDerivativeTable");
@@ -526,7 +528,6 @@ public class StockInsiderBot {
         } else
             logDebug("No non-derivativeTable for " + ticker);
 
-        // 衍生品表（统一用 processTransaction）
         JsonNode deriv = root.path("derivativeTable");
         if (deriv.isMissingNode())
             deriv = root.path("ownershipDocument").path("derivativeTable");
@@ -601,20 +602,49 @@ public class StockInsiderBot {
     private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
             long minimumUsd) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
-        if (!"P".equals(code) && !"S".equals(code))
+
+        if (!"P".equals(code) && !"S".equals(code)) {
+            if (debugEnabled)
+                logDebug("Skipping transaction: code=" + code + " (not P/S)");
             return null;
+        }
+
+        JsonNode exerciseDateNode = transaction.path("exerciseDate");
+        if (!exerciseDateNode.isMissingNode() && !exerciseDateNode.asText().isBlank()) {
+            if (debugEnabled)
+                logDebug("Skipping transaction: code=" + code + " has exerciseDate=" + exerciseDateNode.asText());
+            return null;
+        }
+
         long shares = extractLong(transaction, "transactionAmounts.transactionShares");
         double price = extractDouble(transaction, "transactionAmounts.transactionPricePerShare");
-        if (shares <= 0 || price <= 0)
+        if (shares <= 0 || price <= 0) {
+            if (debugEnabled)
+                logDebug("Skipping transaction: code=" + code + " shares=" + shares + " price=" + price);
             return null;
+        }
+
         double amount = shares * price;
-        if (amount < minimumUsd)
+        if (amount < minimumUsd) {
+            if (debugEnabled)
+                logDebug("Skipping transaction: code=" + code + " amount=" + amount + " < threshold=" + minimumUsd);
             return null;
+        }
+
         String type = "P".equals(code) ? "BUY" : "SELL";
         String security = extractText(transaction, "securityTitle", "stock");
         String is10b51 = transaction.path("transactionCoding").path("is10b51Transaction").asText();
         boolean isPlan = "true".equalsIgnoreCase(is10b51);
-        return new AlertEntry(ownerName, position, type, security, shares, price, amount, isPlan);
+
+        String transactionDate = extractText(transaction, "transactionDate", "");
+        if (!transactionDate.isEmpty() && transactionDate.length() >= 10) {
+            transactionDate = transactionDate.substring(0, 10);
+        }
+
+        if (debugEnabled)
+            logDebug("Creating alert: " + ownerName + " " + type + " " + shares + " shares at " + price + " amount="
+                    + amount + " date=" + transactionDate);
+        return new AlertEntry(ownerName, position, type, security, shares, price, amount, isPlan, transactionDate);
     }
 
     private static long extractLong(JsonNode root, String path) {
@@ -735,49 +765,40 @@ public class StockInsiderBot {
 
     private static boolean sendDiscordMessages(String webhookUrl, String title, String message) throws Exception {
         String titleLine = "**" + title + "**\n";
-        final int MAX_CONTENT = 2000;
-
         String fullBody = titleLine + message;
-        if (escapeJson(fullBody).length() <= MAX_CONTENT) {
-            // 整条消息未超长，直接发送
+        String escapedFull = escapeJson(fullBody);
+        if (escapedFull.length() <= 2000) {
             return sendSingleDiscordMessage(webhookUrl, fullBody);
         }
 
-        // 需要分片发送
-        int titleEscapedLen = escapeJson(titleLine).length();
-        int maxChunkLen = MAX_CONTENT - titleEscapedLen - 5; // 留少量余量
-        if (maxChunkLen <= 0) {
-            System.err.println("Warning: Title too long, cannot send notification.");
-            return false;
-        }
+        String[] lines = fullBody.split("\n", -1);
+        StringBuilder chunk = new StringBuilder();
+        boolean success = true;
 
-        boolean allSuccess = true;
-        int start = 0;
-        int totalLen = message.length();
-        while (start < totalLen) {
-            int end = Math.min(start + maxChunkLen, totalLen);
-            // 微调：确保转义后不超长
-            while (end > start) {
-                String chunk = message.substring(start, end);
-                if (escapeJson(titleLine + chunk).length() <= MAX_CONTENT) {
-                    break;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            String newline = (i < lines.length - 1) ? "\n" : "";
+            String candidate = chunk.toString() + line + newline;
+
+            if (escapeJson(candidate).length() <= 2000) {
+                chunk.append(line).append(newline);
+            } else {
+                if (chunk.length() > 0) {
+                    if (!sendSingleDiscordMessage(webhookUrl, chunk.toString()))
+                        success = false;
+                    chunk.setLength(0);
                 }
-                end--;
-            }
-            if (end == start)
-                break; // 极端情况：单个字符也超长
-
-            String chunk = message.substring(start, end);
-            if (!sendSingleDiscordMessage(webhookUrl, titleLine + chunk)) {
-                allSuccess = false;
-            }
-
-            start = end;
-            if (start < totalLen) {
-                Thread.sleep(500); // 避免触发速率限制
+                String newCandidate = line + newline;
+                if (escapeJson(newCandidate).length() > 2000) {
+                }
+                chunk.append(line).append(newline);
             }
         }
-        return allSuccess;
+        if (chunk.length() > 0) {
+            if (!sendSingleDiscordMessage(webhookUrl, chunk.toString()))
+                success = false;
+        }
+        return success;
     }
 
     private static boolean sendSingleDiscordMessage(String webhookUrl, String content) {
