@@ -561,21 +561,26 @@ public class StockInsiderBot {
         return null;
     }
 
-    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd,
-            Map<String, String> cikToRequestedTicker) throws Exception {
+    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd, Map<String, String> cikToRequestedTicker) throws Exception {
         Map<String, List<AlertEntry>> alerts = new LinkedHashMap<>();
-        XmlMapper mapper = new XmlMapper();
+        
+        // 提取并清洗 XML
         String xmlPayload = extractXmlPayload(xml);
+        if (xmlPayload.isBlank()) {
+            logDebug("Skipping file: Could not extract valid XML payload.");
+            return alerts;
+        }
+
+        XmlMapper mapper = new XmlMapper();
         JsonNode root = mapper.readTree(xmlPayload);
 
         JsonNode issuer = root.path("issuer");
-        // 必须同时兼容 issuerCik (常见) 和 issuerCIK (极少数手填错误)，防止反向映射断链
+        // 兼容 issuerCik 和 issuerCIK
         String rawXmlCik = issuer.path("issuerCik").asText(issuer.path("issuerCIK").asText("Unknown"));
         String normalizedXmlCik = rawXmlCik.replaceFirst("^0+(?!$)", "");
-
-        // 核心护城河：拒绝信任 SEC 填报员的输入，基于 CIK 强行映射回用户请求的 Ticker
-        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik,
-                issuer.path("issuerTradingSymbol").asText("Unknown"));
+        
+        // 基于 CIK 强行映射回用户请求的 Ticker
+        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik, issuer.path("issuerTradingSymbol").asText("Unknown"));
 
         JsonNode reportingOwner = root.path("reportingOwner");
         if (!isOfficerOrDirector(reportingOwner)) {
@@ -583,6 +588,7 @@ public class StockInsiderBot {
             return alerts;
         }
 
+        // ... (此处保留你原有的 OwnerName, Position, transaction 提取逻辑，无需改动) ...
         String ownerName = reportingOwner.path("reportingOwnerId").path("rptOwnerName").asText("Unknown Owner");
         String position = extractPosition(reportingOwner);
 
