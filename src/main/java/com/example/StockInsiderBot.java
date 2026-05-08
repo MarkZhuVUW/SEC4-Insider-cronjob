@@ -762,32 +762,52 @@ public class StockInsiderBot {
     }
 
     private static String extractXmlPayload(String rawText) {
-        if (rawText == null) {
+        if (rawText == null)
+            return "";
+
+        String cleanXml = "";
+
+        // 第一道防线：尝试常规提取 <XML> 块
+        int xmlStart = rawText.indexOf("<XML>");
+        if (xmlStart >= 0) {
+            int xmlEnd = rawText.indexOf("</XML>", xmlStart);
+            if (xmlEnd > xmlStart) {
+                cleanXml = rawText.substring(xmlStart + 5, xmlEnd);
+            }
+        }
+
+        // 第二道防线：无视大小写和换行，暴力切出 ownershipDocument 核心块
+        if (cleanXml.isBlank()) {
+            Matcher m = Pattern.compile("<ownershipDocument[^>]*>.*?</ownershipDocument>",
+                    Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(rawText);
+            if (m.find()) {
+                cleanXml = m.group(0);
+            }
+        }
+
+        // 如果这都不是有效的 Form 4，直接拦截，绝不把 SGML 垃圾扔给 Jackson
+        if (cleanXml.isBlank()) {
             return "";
         }
 
-        int documentStart = rawText.indexOf("<ownershipDocument");
-        if (documentStart >= 0) {
-            int documentEnd = rawText.indexOf("</ownershipDocument>", documentStart);
-            if (documentEnd > documentStart) {
-                // 精准切出纯粹的 XML 核心
-                String cleanXml = rawText.substring(documentStart, documentEnd + "</ownershipDocument>".length());
+        // --- 防弹级数据清洗开始 ---
 
-                // 防弹清洗 1：去除导致解析器崩溃的不可见 ASCII 控制字符
-                cleanXml = cleanXml.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+        // 1. 剔除导致解析器崩溃的不可见 ASCII 控制字符
+        cleanXml = cleanXml.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
 
-                // 防弹清洗 2：处理 SEC 填报中常见的未转义 & 符号 (例如公司名 "A & B")
-                cleanXml = cleanXml.replaceAll("&(?!(amp|apos|quot|lt|gt|#\\d+);)", "&amp;");
+        // 2. 处理未转义的 & 符号 (例如公司名填了 "A & B")
+        cleanXml = cleanXml.replaceAll("&(?!(amp|apos|quot|lt|gt|#\\d+);)", "&amp;");
 
-                // 防弹清洗 3：【核心修复】拦截导致 code 32 报错的非法 `<` 符号。
-                // 逻辑：合法的 XML 标签只能以字母、斜杠、问号、感叹号或下划线开头 (如 <tag, </tag, <?, <!)。
-                // 只要 `<` 后面跟的不是这些字符（比如跟着空格、数字、等号），统统强制替换为 &lt;
-                cleanXml = cleanXml.replaceAll("<(?=[^a-zA-Z_/?!])", "&lt;");
+        // 3. 【核心修复 A】击杀闭合标签里的手残空格，例如: </ rptOwnerName> -> </rptOwnerName>
+        cleanXml = cleanXml.replaceAll("</\\s+", "</");
 
-                return cleanXml.trim();
-            }
-        }
-        return rawText;
+        // 4. 【核心修复 B】击杀起始标签里的手残空格，例如: < rptOwnerName> -> <rptOwnerName>
+        cleanXml = cleanXml.replaceAll("<\\s+(?=[a-zA-Z_/?!])", "<");
+
+        // 5. 将所有不属于 XML 标签的非法 < 符号 (如 footnote 里的 < 5%) 强制转义为 &lt;
+        cleanXml = cleanXml.replaceAll("<(?=[^a-zA-Z_/?!])", "&lt;");
+
+        return cleanXml.trim();
     }
 
     private static boolean sendNotification(String message) {
