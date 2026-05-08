@@ -99,26 +99,31 @@ public class StockInsiderBot {
                 return;
             }
 
-            Set<String> uniqueAlerts = new LinkedHashSet<>();
+            // Group alerts by ticker
+            Map<String, List<AlertEntry>> allAlerts = new LinkedHashMap<>();
             for (String url : form4Urls) {
                 try {
                     String xml = downloadText(url);
-                    uniqueAlerts.addAll(parseForm4(xml, minimumUsd));
+                    Map<String, List<AlertEntry>> parsed = parseForm4(xml, minimumUsd);
+                    parsed.forEach((ticker, alerts) -> {
+                        allAlerts.computeIfAbsent(ticker, k -> new ArrayList<>()).addAll(alerts);
+                    });
                 } catch (Exception ex) {
                     System.err.println("Warning: failed to process Form 4 at " + url + " - " + ex.getMessage());
                 }
             }
 
-            if (uniqueAlerts.isEmpty()) {
+            if (allAlerts.isEmpty()) {
                 System.out.println("No large insider transactions found for " + String.join(", ", tickers) + " on "
                         + masterIndex.indexDate + ".");
                 return;
             }
 
-            String message = "Insider alerts for " + String.join(", ", tickers) + " (" + masterIndex.indexDate + "):\n"
-                    + String.join("\n", uniqueAlerts);
+            // Build nicely formatted notification grouped by ticker
+            String message = buildGroupedNotification(allAlerts, masterIndex.indexDate);
             boolean notified = sendNotification(message);
-            System.out.println("Found " + uniqueAlerts.size() + " alert(s). Notification sent: " + notified);
+            System.out.println("Found " + allAlerts.values().stream().mapToInt(List::size).sum() + " alert(s) in " +
+                    allAlerts.size() + " ticker(s). Notification sent: " + notified);
             if (!notified) {
                 System.out.println(message);
             }
@@ -128,6 +133,75 @@ public class StockInsiderBot {
             System.exit(1);
         }
     }
+
+    // ---------- Helper classes and methods ----------
+
+    private static class AlertEntry {
+        final String ownerName;
+        final String position;
+        final String type;
+        final String security;
+        final long shares;
+        final double price;
+        final double amount;
+        final boolean is10b51;
+
+        AlertEntry(String ownerName, String position, String type, String security,
+                   long shares, double price, double amount, boolean is10b51) {
+            this.ownerName = ownerName;
+            this.position = position;
+            this.type = type;
+            this.security = security;
+            this.shares = shares;
+            this.price = price;
+            this.amount = amount;
+            this.is10b51 = is10b51;
+        }
+    }
+
+    private static String buildGroupedNotification(Map<String, List<AlertEntry>> alertsByTicker, String indexDate) {
+        StringBuilder msg = new StringBuilder();
+        msg.append("Insider Alerts (").append(indexDate).append(")\n");
+
+        List<String> sortedTickers = new ArrayList<>(alertsByTicker.keySet());
+        Collections.sort(sortedTickers);
+
+        for (int t = 0; t < sortedTickers.size(); t++) {
+            String ticker = sortedTickers.get(t);
+            List<AlertEntry> entries = alertsByTicker.get(ticker);
+
+            msg.append("\n---- TICKER: ").append(ticker).append(" ----\n");
+
+            for (int i = 0; i < entries.size(); i++) {
+                AlertEntry e = entries.get(i);
+                msg.append(String.format(
+                        "  Owner:   %s\n" +
+                        "  Position:%s\n" +
+                        "  Action:  %s\n" +
+                        "  Security:%s\n" +
+                        "  Shares:  %,d\n" +
+                        "  Price:   $%,.2f\n" +
+                        "  Amount:  $%,.2f",
+                        e.ownerName,
+                        e.position,
+                        e.type + (e.is10b51 ? " [10b5-1]" : ""),
+                        e.security,
+                        e.shares,
+                        e.price,
+                        e.amount
+                ));
+                // Blank line between transactions inside the same ticker
+                msg.append("\n");
+            }
+            // Extra blank line between ticker groups (except after the last one)
+            if (t < sortedTickers.size() - 1) {
+                msg.append("\n");
+            }
+        }
+        return msg.toString().trim();
+    }
+
+    // ---------- Parsing helpers (unchanged) ----------
 
     private static Map<String, String> parseOptions(String[] args) {
         Map<String, String> options = new HashMap<>();
@@ -368,7 +442,7 @@ public class StockInsiderBot {
                         lastException = new IllegalStateException(
                                 "HTTP 403 Forbidden for " + url + " (attempt " + attempt + ")");
                         if (attempt < 3) {
-                            Thread.sleep(2000); // Wait 2 seconds before retry
+                            Thread.sleep(2000);
                         }
                     } else {
                         throw new IllegalStateException("HTTP " + status + " for " + url);
@@ -501,8 +575,8 @@ public class StockInsiderBot {
         return null;
     }
 
-    private static List<String> parseForm4(String xml, long minimumUsd) throws Exception {
-        Set<String> alerts = new LinkedHashSet<>();
+    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd) throws Exception {
+        Map<String, List<AlertEntry>> alerts = new LinkedHashMap<>();
         XmlMapper mapper = new XmlMapper();
         String xmlPayload = extractXmlPayload(xml);
         JsonNode root = mapper.readTree(xmlPayload);
@@ -519,22 +593,28 @@ public class StockInsiderBot {
             nonDeriv = root.path("ownershipDocument").path("nonDerivativeTable");
         }
         if (nonDeriv.isMissingNode()) {
-            return new ArrayList<>(alerts);
+            return alerts;
         }
 
         JsonNode trans = nonDeriv.path("nonDerivativeTransaction");
         if (trans.isMissingNode()) {
-            return new ArrayList<>(alerts);
+            return alerts;
         }
 
         if (trans.isArray()) {
             for (JsonNode transaction : trans) {
-                processTransaction(transaction, ticker, ownerName, position, minimumUsd, alerts);
+                AlertEntry entry = processTransaction(transaction, ownerName, position, minimumUsd);
+                if (entry != null) {
+                    alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
+                }
             }
         } else if (trans.isObject()) {
-            processTransaction(trans, ticker, ownerName, position, minimumUsd, alerts);
+            AlertEntry entry = processTransaction(trans, ownerName, position, minimumUsd);
+            if (entry != null) {
+                alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
+            }
         }
-        return new ArrayList<>(alerts);
+        return alerts;
     }
 
     private static String extractPosition(JsonNode reportingOwner) {
@@ -565,40 +645,29 @@ public class StockInsiderBot {
         return node.asText(null);
     }
 
-    private static void processTransaction(JsonNode transaction, String ticker, String ownerName, String position,
-            long minimumUsd, Set<String> alerts) {
+    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
+                                                  long minimumUsd) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
         if (!"P".equals(code) && !"S".equals(code)) {
-            return;
+            return null;
         }
 
         long shares = extractLong(transaction, "transactionAmounts.transactionShares");
         double price = extractDouble(transaction, "transactionAmounts.transactionPricePerShare");
         if (shares <= 0 || price <= 0) {
-            return;
+            return null;
         }
         double amount = shares * price;
         if (amount <= minimumUsd) {
-            return;
+            return null;
         }
 
-        String type = "P".equals(code) ? "Buy" : "Sell";
+        String type = "P".equals(code) ? "BUY" : "SELL";
         String security = extractText(transaction, "securityTitle", "stock");
         String is10b51 = transaction.path("transactionCoding").path("is10b51Transaction").asText();
-        String planTag = "true".equalsIgnoreCase(is10b51) ? " [10b5-1]" : "";
+        boolean isPlan = "true".equalsIgnoreCase(is10b51);
 
-        String alert = String.format(
-                "Ticker: %s\nOwner: %s\nPosition: %s\nAction: %s\nSecurity: %s\nShares: %d\nPrice: $%.2f\nAmount: $%.2f%s",
-                ticker,
-                ownerName,
-                position,
-                type,
-                security,
-                shares,
-                price,
-                amount,
-                planTag);
-        alerts.add(alert);
+        return new AlertEntry(ownerName, position, type, security, shares, price, amount, isPlan);
     }
 
     private static long extractLong(JsonNode root, String path) {

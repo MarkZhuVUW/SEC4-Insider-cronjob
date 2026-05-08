@@ -6,30 +6,26 @@ on:
   workflow_dispatch:
     inputs:
       tickers:
-        description: 'Comma-separated list of stock tickers'
-        required: true
-        default: 'AAPL,GOOGL'
-      threshold:
-        description: 'Minimum trade size in USD'
+        description: 'Comma-separated list of stock tickers (leave blank to use repo variable or default)'
         required: false
-        default: '500000'
+        default: ''
+      threshold:
+        description: 'Minimum trade size in USD (leave blank for default)'
+        required: false
+        default: ''
       lookback:
         description: 'Days to search back for a valid SEC master index'
         required: false
-        default: '1'
-      mock:
-        description: 'Use mock data for testing (true/false)'
-        required: false
-        default: 'false'
+        default: ''
 
 env:
   NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
   SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
-  TICKERS: ${{ github.event.inputs.tickers || 'AAPL,GOOGL' }}
-  THRESHOLD_USD: ${{ github.event.inputs.threshold || '500000' }}
-  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || '1' }}
-  MOCK: ${{ github.event.inputs.mock || 'false' }}
+  # Priority: dispatch input > repository variable > hardcoded fallback
+  TICKERS: ${{ github.event.inputs.tickers || vars.TICKERS || 'AAPL,GOOGL' }}
+  THRESHOLD_USD: ${{ github.event.inputs.threshold || vars.THRESHOLD_USD || '500000' }}
+  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || vars.LOOKBACK_DAYS || '1' }}
 
 jobs:
   check:
@@ -45,4 +41,4 @@ jobs:
           distribution: 'temurin'
 
       - name: Run bot
-        run: mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }} --mock=${{ env.MOCK }}"
+        run: mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }}"
