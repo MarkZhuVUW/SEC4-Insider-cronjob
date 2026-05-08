@@ -452,17 +452,11 @@ public class StockInsiderBot {
                 : new IllegalStateException("Failed to download " + url + " after 3 attempts");
     }
 
-    // 修改前的方法签名
-    // private static List<String> parseMasterIdx(String content, Set<String> ciks)
-    // { ... }
-
-    // 1. 修改方法签名，接受 Map<String, String> cikToRequestedTicker 作为参数
-    // 2. 方法内部创建标准化后的 cikSet
-    private static List<String> parseMasterIdx(String content, Map<String, String> cikToRequestedTicker) {
-        // 从 Map 的 value 中提取 CIK，并标准化为无前导零格式
-        Set<String> normalizedCiks = new HashSet<>();
-        for (String cik : cikToRequestedTicker.values()) {
-            normalizedCiks.add(cik.replaceFirst("^0+(?!$)", ""));
+    private static List<String> parseMasterIdx(String content, Set<String> ciks) {
+        // 内部统一去除前导零，保障匹配
+        Set<String> cleanCiks = new HashSet<>();
+        for (String cik : ciks) {
+            cleanCiks.add(cik.replaceFirst("^0+(?!$)", ""));
         }
 
         Set<String> urls = new LinkedHashSet<>();
@@ -471,19 +465,24 @@ public class StockInsiderBot {
         }
 
         for (String line : content.split("\\R")) {
-            // ... (省略部分代码)
-            String cik = parts[0].trim();
+            if (line.isBlank() || line.startsWith("CIK|") || line.startsWith("-----")) {
+                continue;
+            }
 
-            // 关键修复：索引文件中的 CIK 可能有前导零，先标准化再匹配
-            String cleanCik = cik.replaceFirst("^0+(?!$)", "");
+            // 这里必须是 parts 变量，否则会“cannot find symbol”
+            String[] parts = line.split("\\|", 6);
+            if (parts.length < 5) {
+                continue;
+            }
 
+            String fileCik = parts[0].trim().replaceFirst("^0+(?!$)", ""); // 标准化文件中的 CIK
             String formType = parts[2].trim();
+
             if (!formType.startsWith("4")) {
                 continue;
             }
 
-            // 现在用标准化后的 cleanCik 去匹配
-            if (normalizedCiks.contains(cleanCik)) {
+            if (cleanCiks.contains(fileCik)) {
                 String filename = parts[4].trim();
                 if (!filename.isEmpty()) {
                     urls.add(SEC_BASE + filename);
