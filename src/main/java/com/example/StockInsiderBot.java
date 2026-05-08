@@ -762,20 +762,25 @@ public class StockInsiderBot {
     }
 
     private static String extractXmlPayload(String rawText) {
-        if (rawText == null)
+        if (rawText == null) {
             return "";
-        int xmlWrapperStart = rawText.indexOf("<XML>");
-        if (xmlWrapperStart >= 0) {
-            int xmlWrapperEnd = rawText.indexOf("</XML>", xmlWrapperStart);
-            if (xmlWrapperEnd > xmlWrapperStart) {
-                return rawText.substring(xmlWrapperStart + 5, xmlWrapperEnd).trim();
-            }
         }
+
+        // 核心修复：直接定位 <ownershipDocument，无视 <XML> 标签和 SEC 恶心的文件头杂质
         int documentStart = rawText.indexOf("<ownershipDocument");
         if (documentStart >= 0) {
             int documentEnd = rawText.indexOf("</ownershipDocument>", documentStart);
             if (documentEnd > documentStart) {
-                return rawText.substring(documentStart, documentEnd + "</ownershipDocument>".length()).trim();
+                // 精准切出纯粹的 XML 核心
+                String cleanXml = rawText.substring(documentStart, documentEnd + "</ownershipDocument>".length());
+
+                // 防弹清洗 1：去除经常导致 Jackson 崩溃的不可见 ASCII 控制字符
+                cleanXml = cleanXml.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+
+                // 防弹清洗 2：处理 SEC 填报中常见的未转义 & 符号 (例如公司名填了 "A & B" 会直接弄死解析器)
+                cleanXml = cleanXml.replaceAll("&(?!(amp|apos|quot|lt|gt|#\\d+);)", "&amp;");
+
+                return cleanXml.trim();
             }
         }
         return rawText;
