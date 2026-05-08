@@ -95,12 +95,16 @@ public class StockInsiderBot {
             }
 
             if (form4Urls.isEmpty()) {
-                throw new Exception("Unable to locate Form 4 filings for the requested tickers in the last "
+                // No Form 4 found - could be weekend/holiday. Not an error.
+                System.out.println("No Form 4 filings found for " + String.join(", ", tickers) + " in the last "
                         + maxLookbackDays + " days.");
+                return;
             }
 
-            // Group alerts by ticker
+            // Group alerts by ticker and track failures
             Map<String, List<AlertEntry>> allAlerts = new LinkedHashMap<>();
+            int processedCount = 0;
+            int failedCount = 0;
             for (String url : form4Urls) {
                 try {
                     String xml = downloadText(url);
@@ -108,14 +112,16 @@ public class StockInsiderBot {
                     parsed.forEach((ticker, alerts) -> {
                         allAlerts.computeIfAbsent(ticker, k -> new ArrayList<>()).addAll(alerts);
                     });
+                    processedCount++;
                 } catch (Exception ex) {
-                    if (ex.getMessage() != null && ex.getMessage().contains("404")) {
-                        System.err.println("Error: Form 4 file not found (404) at " + url);
-                        throw new Exception("Failed to fetch Form 4 from " + url + ": " + ex.getMessage(), ex);
-                    } else {
-                        System.err.println("Warning: failed to process Form 4 at " + url + " - " + ex.getMessage());
-                    }
+                    failedCount++;
+                    System.err.println("Warning: failed to process Form 4 at " + url + " - " + ex.getMessage());
                 }
+            }
+
+            // If all Form 4s failed, that's an error worth reporting
+            if (processedCount == 0 && failedCount > 0) {
+                throw new Exception("Failed to process any of the " + failedCount + " Form 4 filings found.");
             }
 
             if (allAlerts.isEmpty()) {
@@ -135,7 +141,14 @@ public class StockInsiderBot {
         } catch (Exception e) {
             System.err.println("Fatal error: " + e.getMessage());
             e.printStackTrace();
-            sendErrorNotification("Unexpected error occurred: " + e.getMessage());
+            // Only send error notification for real errors, not for "no data found"
+            // situations
+            String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            if (!errorMsg.contains("No Form 4 filings found") &&
+                    !errorMsg.contains("No large insider transactions found") &&
+                    !errorMsg.contains("No valid CIKs found")) {
+                sendErrorNotification("Insider Bot Error: " + errorMsg);
+            }
             System.exit(1);
         }
     }
@@ -167,42 +180,28 @@ public class StockInsiderBot {
 
     private static String buildGroupedNotification(Map<String, List<AlertEntry>> alertsByTicker, String indexDate) {
         StringBuilder msg = new StringBuilder();
-        msg.append("Insider Alerts (").append(indexDate).append(")\n");
+        msg.append("🔔 Insider Alerts (").append(indexDate).append(")\n\n");
 
         List<String> sortedTickers = new ArrayList<>(alertsByTicker.keySet());
         Collections.sort(sortedTickers);
 
-        for (int t = 0; t < sortedTickers.size(); t++) {
-            String ticker = sortedTickers.get(t);
+        for (String ticker : sortedTickers) {
             List<AlertEntry> entries = alertsByTicker.get(ticker);
+            msg.append("▶ ").append(ticker).append("\n");
 
-            msg.append("\n---- TICKER: ").append(ticker).append(" ----\n");
-
-            for (int i = 0; i < entries.size(); i++) {
-                AlertEntry e = entries.get(i);
-                msg.append(String.format(
-                        "  Owner:   %s\n" +
-                                "  Position:%s\n" +
-                                "  Action:  %s\n" +
-                                "  Security:%s\n" +
-                                "  Shares:  %,d\n" +
-                                "  Price:   $%,.2f\n" +
-                                "  Amount:  $%,.2f",
+            for (AlertEntry e : entries) {
+                String action = e.type + (e.is10b51 ? " [10b5-1]" : "");
+                msg.append(String.format("  %s | %s | %s | %,d @ $%,.2f = $%,.2f\n",
                         e.ownerName,
                         e.position,
-                        e.type + (e.is10b51 ? " [10b5-1]" : ""),
-                        e.security,
+                        action,
                         e.shares,
                         e.price,
                         e.amount));
-                // Blank line between transactions inside the same ticker
-                msg.append("\n");
             }
-            // Extra blank line between ticker groups (except after the last one)
-            if (t < sortedTickers.size() - 1) {
-                msg.append("\n");
-            }
+            msg.append("\n");
         }
+
         return msg.toString().trim();
     }
 
@@ -455,14 +454,16 @@ public class StockInsiderBot {
                             throw new IllegalStateException("Empty response from " + url);
                         }
                         return EntityUtils.toString(entity);
-                    } else if (status == 403) {
+                    } else if (status == 403 || status == 404) {
+                        // 403 Forbidden and 404 Not Found are permanent errors, don't retry
+                        throw new IllegalStateException("HTTP " + status + " for " + url);
+                    } else {
+                        // Temporary errors: retry
                         lastException = new IllegalStateException(
-                                "HTTP 403 Forbidden for " + url + " (attempt " + attempt + ")");
+                                "HTTP " + status + " for " + url + " (attempt " + attempt + ")");
                         if (attempt < 3) {
                             Thread.sleep(2000);
                         }
-                    } else {
-                        throw new IllegalStateException("HTTP " + status + " for " + url);
                     }
                 }
             } catch (Exception e) {
