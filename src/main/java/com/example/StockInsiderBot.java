@@ -126,7 +126,7 @@ public class StockInsiderBot {
                     String xml = downloadText(url);
                     // 传入 cikToRequestedTicker 以便在解析时强行映射回用户视角的 Ticker
                     Map<String, List<AlertEntry>> parsed = parseForm4(xml, minimumUsd, cikToRequestedTicker);
-                    
+
                     parsed.forEach((ticker, alerts) -> {
                         tickersWithForm4.add(ticker);
                         if (!alerts.isEmpty()) {
@@ -344,7 +344,8 @@ public class StockInsiderBot {
     private static String findCikForTicker(String ticker, Map<String, String> tickerToCik) {
         // 暴力清洗：去空格、转大写、剔除所有非字母数字字符 (把 brk.b, brk-b, BRKB 统一降维成 BRKB)
         String cleanInput = ticker.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
-        if (cleanInput.isBlank()) return null;
+        if (cleanInput.isBlank())
+            return null;
 
         // 遍历 SEC 字典，对字典中的 Key 也进行同步清洗匹配
         for (Map.Entry<String, String> entry : tickerToCik.entrySet()) {
@@ -353,7 +354,7 @@ public class StockInsiderBot {
                 return entry.getValue();
             }
         }
-        
+
         // 遍历 Fallback 字典
         for (Map.Entry<String, String> entry : FALLBACK_TICKER_MAP.entrySet()) {
             String cleanDictKey = entry.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
@@ -560,18 +561,21 @@ public class StockInsiderBot {
         return null;
     }
 
-    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd, Map<String, String> cikToRequestedTicker) throws Exception {
+    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd,
+            Map<String, String> cikToRequestedTicker) throws Exception {
         Map<String, List<AlertEntry>> alerts = new LinkedHashMap<>();
         XmlMapper mapper = new XmlMapper();
         String xmlPayload = extractXmlPayload(xml);
         JsonNode root = mapper.readTree(xmlPayload);
 
         JsonNode issuer = root.path("issuer");
-        String rawXmlCik = issuer.path("issuerCIK").asText("Unknown");
+        // 必须同时兼容 issuerCik (常见) 和 issuerCIK (极少数手填错误)，防止反向映射断链
+        String rawXmlCik = issuer.path("issuerCik").asText(issuer.path("issuerCIK").asText("Unknown"));
         String normalizedXmlCik = rawXmlCik.replaceFirst("^0+(?!$)", "");
-        
+
         // 核心护城河：拒绝信任 SEC 填报员的输入，基于 CIK 强行映射回用户请求的 Ticker
-        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik, issuer.path("issuerTradingSymbol").asText("Unknown"));
+        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik,
+                issuer.path("issuerTradingSymbol").asText("Unknown"));
 
         JsonNode reportingOwner = root.path("reportingOwner");
         if (!isOfficerOrDirector(reportingOwner)) {
