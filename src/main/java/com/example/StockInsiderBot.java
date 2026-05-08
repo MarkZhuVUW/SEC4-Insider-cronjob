@@ -104,7 +104,7 @@ public class StockInsiderBot {
 
             // Group alerts by ticker and track failures
             Map<String, List<AlertEntry>> allAlerts = new LinkedHashMap<>();
-            Set<String> tickersWithForm4 = new HashSet<>();  // tickers for which at least one Form 4 was parsed
+            Set<String> tickersWithForm4 = new HashSet<>(); // tickers for which at least one Form 4 was parsed
             int processedCount = 0;
             int failedCount = 0;
             for (String url : form4Urls) {
@@ -142,7 +142,8 @@ public class StockInsiderBot {
         } catch (Exception e) {
             System.err.println("Fatal error: " + e.getMessage());
             e.printStackTrace();
-            // Only send error notification for real errors, not for "no data found" situations
+            // Only send error notification for real errors, not for "no data found"
+            // situations
             String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
             if (!errorMsg.contains("No Form 4 filings found") &&
                     !errorMsg.contains("No large insider transactions found") &&
@@ -179,12 +180,13 @@ public class StockInsiderBot {
     }
 
     /**
-     * Builds a notification that lists every requested ticker with either the alerts or a status message.
+     * Builds a notification that lists every requested ticker with either the
+     * alerts or a status message.
      */
     private static String buildGroupedNotification(String[] tickers,
-                                                   Map<String, List<AlertEntry>> alertsByTicker,
-                                                   Set<String> tickersWithForm4,
-                                                   String indexDate) {
+            Map<String, List<AlertEntry>> alertsByTicker,
+            Set<String> tickersWithForm4,
+            String indexDate) {
         StringBuilder msg = new StringBuilder();
         msg.append("🔔 Insider Alerts (").append(indexDate).append(")\n\n");
 
@@ -545,8 +547,10 @@ public class StockInsiderBot {
         Set<String> urls = new LinkedHashSet<>();
         LocalDate threshold = LocalDate.now().minusDays(maxLookbackDays);
         Pattern entryPattern = Pattern.compile("<entry>(.*?)</entry>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Pattern datePattern = Pattern.compile("<filing-date>(.*?)</filing-date>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Pattern hrefPattern = Pattern.compile("<filing-href>(.*?)</filing-href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern datePattern = Pattern.compile("<filing-date>(.*?)</filing-date>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern hrefPattern = Pattern.compile("<filing-href>(.*?)</filing-href>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher entryMatcher = entryPattern.matcher(atomXml);
         while (entryMatcher.find()) {
             String entry = entryMatcher.group(1);
@@ -602,7 +606,8 @@ public class StockInsiderBot {
     }
 
     /**
-     * Parses a single Form 4 XML and returns only transactions by officers/directors.
+     * Parses a single Form 4 XML and returns only transactions by
+     * officers/directors.
      */
     private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd) throws Exception {
         Map<String, List<AlertEntry>> alerts = new LinkedHashMap<>();
@@ -682,10 +687,11 @@ public class StockInsiderBot {
             }
         }
         // Fallback paths
-        String[] fallbacks = {"relationshipTitle", "reportingOwnerId.rptOwnerTitle"};
+        String[] fallbacks = { "relationshipTitle", "reportingOwnerId.rptOwnerTitle" };
         for (String path : fallbacks) {
             String val = pathValue(reportingOwner, path);
-            if (val != null && !val.isBlank()) return val;
+            if (val != null && !val.isBlank())
+                return val;
         }
         return "Unknown Position";
     }
@@ -701,21 +707,26 @@ public class StockInsiderBot {
         JsonNode node = root;
         for (String part : path.split("\\.")) {
             node = node.path(part);
-            if (node.isMissingNode()) return null;
+            if (node.isMissingNode())
+                return null;
         }
         return node.asText(null);
     }
 
-    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position, long minimumUsd) {
+    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
+            long minimumUsd) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
-        if (!"P".equals(code) && !"S".equals(code)) return null;
+        if (!"P".equals(code) && !"S".equals(code))
+            return null;
 
         long shares = extractLong(transaction, "transactionAmounts.transactionShares");
         double price = extractDouble(transaction, "transactionAmounts.transactionPricePerShare");
-        if (shares <= 0 || price <= 0) return null;
+        if (shares <= 0 || price <= 0)
+            return null;
 
         double amount = shares * price;
-        if (amount < minimumUsd) return null;
+        if (amount < minimumUsd)
+            return null;
 
         String type = "P".equals(code) ? "BUY" : "SELL";
         String security = extractText(transaction, "securityTitle", "stock");
@@ -727,33 +738,43 @@ public class StockInsiderBot {
 
     private static long extractLong(JsonNode root, String path) {
         JsonNode node = nodeAt(root, path);
-        if (node.isNumber()) return node.asLong(0);
-        if (node.isTextual() && !node.asText().isBlank()) return parseLongSafely(node.asText());
+        if (node.isNumber())
+            return node.asLong(0);
+        if (node.isTextual() && !node.asText().isBlank())
+            return parseLongSafely(node.asText());
         JsonNode valueNode = node.path("value");
         if (!valueNode.isMissingNode() && !valueNode.isNull()) {
-            if (valueNode.isNumber()) return valueNode.asLong(0);
-            if (valueNode.isTextual() && !valueNode.asText().isBlank()) return parseLongSafely(valueNode.asText());
+            if (valueNode.isNumber())
+                return valueNode.asLong(0);
+            if (valueNode.isTextual() && !valueNode.asText().isBlank())
+                return parseLongSafely(valueNode.asText());
         }
         return 0;
     }
 
     private static double extractDouble(JsonNode root, String path) {
         JsonNode node = nodeAt(root, path);
-        if (node.isNumber()) return node.asDouble(0.0);
-        if (node.isTextual() && !node.asText().isBlank()) return parseDoubleSafely(node.asText());
+        if (node.isNumber())
+            return node.asDouble(0.0);
+        if (node.isTextual() && !node.asText().isBlank())
+            return parseDoubleSafely(node.asText());
         JsonNode valueNode = node.path("value");
         if (!valueNode.isMissingNode() && !valueNode.isNull()) {
-            if (valueNode.isNumber()) return valueNode.asDouble(0.0);
-            if (valueNode.isTextual() && !valueNode.asText().isBlank()) return parseDoubleSafely(valueNode.asText());
+            if (valueNode.isNumber())
+                return valueNode.asDouble(0.0);
+            if (valueNode.isTextual() && !valueNode.asText().isBlank())
+                return parseDoubleSafely(valueNode.asText());
         }
         return 0.0;
     }
 
     private static String extractText(JsonNode root, String path, String fallback) {
         JsonNode node = nodeAt(root, path);
-        if (!node.isMissingNode() && !node.asText().isBlank()) return node.asText();
+        if (!node.isMissingNode() && !node.asText().isBlank())
+            return node.asText();
         JsonNode valueNode = node.path("value");
-        if (!valueNode.isMissingNode() && !valueNode.asText().isBlank()) return valueNode.asText();
+        if (!valueNode.isMissingNode() && !valueNode.asText().isBlank())
+            return valueNode.asText();
         return fallback;
     }
 
@@ -761,7 +782,8 @@ public class StockInsiderBot {
         JsonNode node = root;
         for (String part : path.split("\\.")) {
             node = node.path(part);
-            if (node.isMissingNode()) return node;
+            if (node.isMissingNode())
+                return node;
         }
         return node;
     }
@@ -783,7 +805,8 @@ public class StockInsiderBot {
     }
 
     private static String extractXmlPayload(String rawText) {
-        if (rawText == null) return "";
+        if (rawText == null)
+            return "";
         int xmlWrapperStart = rawText.indexOf("<XML>");
         if (xmlWrapperStart >= 0) {
             int xmlWrapperEnd = rawText.indexOf("</XML>", xmlWrapperStart);
@@ -821,7 +844,29 @@ public class StockInsiderBot {
 
     private static boolean sendDiscordWebhook(String webhookUrl, String title, String message) {
         try {
-            String payload = "{\"content\":\"**" + escapeJson(title) + "**\\n" + escapeJson(message) + "\"}";
+            // Build the raw content string
+            String rawContent = "**" + title + "**\n" + message;
+            // Escape for JSON
+            String escapedContent = escapeJson(rawContent);
+
+            // Discord's content field limit is 2000 characters
+            final int MAX_CONTENT_LENGTH = 2000;
+            if (escapedContent.length() > MAX_CONTENT_LENGTH) {
+                // Truncate and add ellipsis, ensuring we stay within 2000
+                int maxLen = MAX_CONTENT_LENGTH - 3; // leave room for "..."
+                if (maxLen > 0) {
+                    escapedContent = escapedContent.substring(0, maxLen) + "...";
+                } else {
+                    escapedContent = "...";
+                }
+                logDebug("Notification content truncated to " + escapedContent.length() + " characters.");
+            }
+
+            String payload = "{\"content\":\"" + escapedContent + "\"}";
+            logDebug("Sending Discord webhook. URL starts with: " +
+                    webhookUrl.substring(0, Math.min(webhookUrl.length(), 50)) +
+                    "... payload length: " + payload.length());
+
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(HTTP_TIMEOUT)
                     .build();
@@ -829,31 +874,29 @@ public class StockInsiderBot {
                     .uri(URI.create(webhookUrl))
                     .timeout(HTTP_TIMEOUT)
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(truncateDiscordPayload(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
                     .build();
-            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            int status = response.statusCode();
+            if (status >= 200 && status < 300) {
                 return true;
             }
-            System.err.println("Warning: Discord webhook returned status " + response.statusCode());
+            System.err.println("Warning: Discord webhook returned status " + status +
+                    ", body: " + response.body());
         } catch (Exception e) {
             System.err.println("Warning: failed to send Discord notification: " + e.getMessage());
+            e.printStackTrace();
         }
         return false;
     }
 
     private static String escapeJson(String value) {
-        if (value == null) return "";
+        if (value == null)
+            return "";
         return value.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r");
-    }
-
-    private static String truncateDiscordPayload(String payload) {
-        int maxLength = 1900;
-        if (payload.length() <= maxLength) return payload;
-        return payload.substring(0, maxLength) + "...";
     }
 
     private static class MasterIndex {
