@@ -452,25 +452,38 @@ public class StockInsiderBot {
                 : new IllegalStateException("Failed to download " + url + " after 3 attempts");
     }
 
-    private static List<String> parseMasterIdx(String content, Set<String> ciks) {
+    // 修改前的方法签名
+    // private static List<String> parseMasterIdx(String content, Set<String> ciks)
+    // { ... }
+
+    // 1. 修改方法签名，接受 Map<String, String> cikToRequestedTicker 作为参数
+    // 2. 方法内部创建标准化后的 cikSet
+    private static List<String> parseMasterIdx(String content, Map<String, String> cikToRequestedTicker) {
+        // 从 Map 的 value 中提取 CIK，并标准化为无前导零格式
+        Set<String> normalizedCiks = new HashSet<>();
+        for (String cik : cikToRequestedTicker.values()) {
+            normalizedCiks.add(cik.replaceFirst("^0+(?!$)", ""));
+        }
+
         Set<String> urls = new LinkedHashSet<>();
         if (content == null) {
             return new ArrayList<>(urls);
         }
+
         for (String line : content.split("\\R")) {
-            if (line.isBlank() || line.startsWith("CIK|") || line.startsWith("-----")) {
-                continue;
-            }
-            String[] parts = line.split("\\|", 6);
-            if (parts.length < 5) {
-                continue;
-            }
+            // ... (省略部分代码)
             String cik = parts[0].trim();
+
+            // 关键修复：索引文件中的 CIK 可能有前导零，先标准化再匹配
+            String cleanCik = cik.replaceFirst("^0+(?!$)", "");
+
             String formType = parts[2].trim();
             if (!formType.startsWith("4")) {
                 continue;
             }
-            if (ciks.contains(cik)) {
+
+            // 现在用标准化后的 cleanCik 去匹配
+            if (normalizedCiks.contains(cleanCik)) {
                 String filename = parts[4].trim();
                 if (!filename.isEmpty()) {
                     urls.add(SEC_BASE + filename);
@@ -561,9 +574,10 @@ public class StockInsiderBot {
         return null;
     }
 
-    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd, Map<String, String> cikToRequestedTicker) throws Exception {
+    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd,
+            Map<String, String> cikToRequestedTicker) throws Exception {
         Map<String, List<AlertEntry>> alerts = new LinkedHashMap<>();
-        
+
         // 提取并清洗 XML
         String xmlPayload = extractXmlPayload(xml);
         if (xmlPayload.isBlank()) {
@@ -578,9 +592,10 @@ public class StockInsiderBot {
         // 兼容 issuerCik 和 issuerCIK
         String rawXmlCik = issuer.path("issuerCik").asText(issuer.path("issuerCIK").asText("Unknown"));
         String normalizedXmlCik = rawXmlCik.replaceFirst("^0+(?!$)", "");
-        
+
         // 基于 CIK 强行映射回用户请求的 Ticker
-        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik, issuer.path("issuerTradingSymbol").asText("Unknown"));
+        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik,
+                issuer.path("issuerTradingSymbol").asText("Unknown"));
 
         JsonNode reportingOwner = root.path("reportingOwner");
         if (!isOfficerOrDirector(reportingOwner)) {
