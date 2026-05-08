@@ -4,52 +4,32 @@ on:
   schedule:
     - cron: "0 10 * * *"
       timezone: "Pacific/Auckland"
+
   workflow_dispatch:
     inputs:
       tickers:
         description: "Comma-separated list of stock tickers"
         required: false
         default: "NVDA,AMZN,AAPL,GOOGL,SOFI,TEAM,CROX,V,STZ,DVA,OXY,CRM,SIEGY,DPZ,TRI,EL,DIS,WDFC,AXP,WM,ELV,MOH,KO,LVMUY,COST,PDD,MCO,RKLB"
+
       threshold:
         description: "Minimum trade size in USD"
         required: false
-        default: "500000"
+        default: "200000"
+
       lookback:
         description: "Days to search back for a valid SEC master index"
         required: false
-        default: "1"
+        default: "7"
 
 env:
   DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
   SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
-  TICKERS: ${{ vars.TICKERS || 'BRKB' }}
-  THRESHOLD_USD: ${{ vars.THRESHOLD_USD || '500000' }}
-  LOOKBACK_DAYS: ${{ vars.LOOKBACK_DAYS || '1' }}
 
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  # Manual run overrides default values
+  TICKERS: ${{ github.event.inputs.tickers || 'NVDA,AMZN,AAPL,GOOGL,SOFI,TEAM,CROX,V,STZ,DVA,OXY,CRM,SIEGY,DPZ,TRI,EL,DIS,WDFC,AXP,WM,ELV,MOH,KO,LVMUY,COST,PDD,MCO,RKLB' }}
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-          # Also cache Maven dependencies (optional but speeds up even more)
-          cache: "maven"
+  THRESHOLD_USD: ${{ github.event.inputs.threshold || '200000' }}
 
-      - name: Cache Maven local repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          # Key is based on the pom.xml hash, ensuring fresh cache when deps change
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Run bot
-        run: mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }}"
+  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || '7' }}
