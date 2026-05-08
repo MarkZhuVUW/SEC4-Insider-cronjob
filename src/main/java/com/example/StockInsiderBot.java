@@ -222,39 +222,61 @@ public class StockInsiderBot {
         Map<String, String> options = new HashMap<>();
         String positional = null;
         for (String arg : args) {
-            if (arg == null || arg.isBlank()) continue;
+            if (arg == null || arg.isBlank())
+                continue;
             if (arg.startsWith("--")) {
                 String normalized = arg.substring(2);
                 String[] parts = normalized.split("=", 2);
-                if (parts.length == 2) options.put(parts[0].toLowerCase(Locale.ROOT), parts[1]);
-                else if (parts.length == 1) options.put(parts[0].toLowerCase(Locale.ROOT), "true");
-            } else if (positional == null) positional = arg;
+                if (parts.length == 2)
+                    options.put(parts[0].toLowerCase(Locale.ROOT), parts[1]);
+                else if (parts.length == 1)
+                    options.put(parts[0].toLowerCase(Locale.ROOT), "true");
+            } else if (positional == null)
+                positional = arg;
         }
         options.put("positional", positional);
         return options;
     }
 
     private static String firstNonBlank(String... values) {
-        for (String value : values) if (value != null && !value.isBlank()) return value;
+        for (String value : values)
+            if (value != null && !value.isBlank())
+                return value;
         return null;
     }
 
     private static boolean debugEnabled = DEFAULT_DEBUG;
-    private static void setDebug(boolean enabled) { debugEnabled = enabled; }
-    private static void logDebug(String message) { if (debugEnabled) System.out.println("DEBUG: " + message); }
+
+    private static void setDebug(boolean enabled) {
+        debugEnabled = enabled;
+    }
+
+    private static void logDebug(String message) {
+        if (debugEnabled)
+            System.out.println("DEBUG: " + message);
+    }
 
     private static long parseLong(String value, long fallback) {
-        try { if (value != null && !value.isBlank()) return Long.parseLong(value.trim()); } catch (NumberFormatException ignored) {}
+        try {
+            if (value != null && !value.isBlank())
+                return Long.parseLong(value.trim());
+        } catch (NumberFormatException ignored) {
+        }
         return fallback;
     }
 
     private static int parseInt(String value, int fallback) {
-        try { if (value != null && !value.isBlank()) return Integer.parseInt(value.trim()); } catch (NumberFormatException ignored) {}
+        try {
+            if (value != null && !value.isBlank())
+                return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+        }
         return fallback;
     }
 
     private static boolean parseBoolean(String value, boolean fallback) {
-        if (value == null || value.isBlank()) return fallback;
+        if (value == null || value.isBlank())
+            return fallback;
         String trimmed = value.trim().toLowerCase(Locale.ROOT);
         return !(trimmed.equals("false") || trimmed.equals("0") || trimmed.equals("no") || trimmed.equals("off"));
     }
@@ -271,17 +293,23 @@ public class StockInsiderBot {
             if (content != null && !content.isBlank()) {
                 for (String line : content.split("\\R")) {
                     String[] parts = line.trim().split("\\t");
-                    if (parts.length == 2) map.put(parts[0].toUpperCase(Locale.ROOT), parts[1]);
+                    if (parts.length == 2)
+                        map.put(parts[0].toUpperCase(Locale.ROOT), parts[1]);
                 }
             }
-        } catch (Exception e) { System.err.println("Warning: could not download SEC ticker mapping - " + e.getMessage()); }
-        if (map.isEmpty()) { map.putAll(FALLBACK_TICKER_MAP); }
+        } catch (Exception e) {
+            System.err.println("Warning: could not download SEC ticker mapping - " + e.getMessage());
+        }
+        if (map.isEmpty()) {
+            map.putAll(FALLBACK_TICKER_MAP);
+        }
         return map;
     }
 
     private static String findCikForTicker(String ticker, Map<String, String> tickerToCik) {
         String cleanInput = ticker.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
-        if (cleanInput.isBlank()) return null;
+        if (cleanInput.isBlank())
+            return null;
         for (Map.Entry<String, String> entry : tickerToCik.entrySet()) {
             if (entry.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "").equals(cleanInput))
                 return entry.getValue();
@@ -306,12 +334,17 @@ public class StockInsiderBot {
                 if (content != null && !content.isBlank()) {
                     logDebug("Using SEC index: " + url);
                     combinedContent.append(content);
-                    if (foundDate == null) foundDate = date;
+                    if (foundDate == null)
+                        foundDate = date;
                 }
-            } catch (Exception e) { logDebug("Could not download master index for " + date + " - " + e.getMessage()); }
+            } catch (Exception e) {
+                logDebug("Could not download master index for " + date + " - " + e.getMessage());
+            }
             date = date.minusDays(1);
         }
-        return combinedContent.length() > 0 && foundDate != null ? new MasterIndex(foundDate.format(DateTimeFormatter.ofPattern("yyyyMMdd")), combinedContent.toString()) : null;
+        return combinedContent.length() > 0 && foundDate != null
+                ? new MasterIndex(foundDate.format(DateTimeFormatter.ofPattern("yyyyMMdd")), combinedContent.toString())
+                : null;
     }
 
     private static String downloadText(String url) throws Exception {
@@ -329,38 +362,49 @@ public class StockInsiderBot {
                     int status = response.getCode();
                     if (status == HttpStatus.SC_OK) {
                         HttpEntity entity = response.getEntity();
-                        if (entity == null) throw new IllegalStateException("Empty response from " + url);
+                        if (entity == null)
+                            throw new IllegalStateException("Empty response from " + url);
                         return EntityUtils.toString(entity);
                     } else if (status == 403 || status == 404) {
                         throw new IllegalStateException("HTTP " + status + " for " + url);
                     } else {
-                        lastException = new IllegalStateException("HTTP " + status + " for " + url + " (attempt " + attempt + ")");
-                        if (attempt < 3) Thread.sleep(2000);
+                        lastException = new IllegalStateException(
+                                "HTTP " + status + " for " + url + " (attempt " + attempt + ")");
+                        if (attempt < 3)
+                            Thread.sleep(2000);
                     }
                 }
             } catch (Exception e) {
                 lastException = e;
-                if (attempt < 3) Thread.sleep(1000);
+                if (attempt < 3)
+                    Thread.sleep(1000);
             }
         }
-        throw lastException != null ? lastException : new IllegalStateException("Failed to download " + url + " after 3 attempts");
+        throw lastException != null ? lastException
+                : new IllegalStateException("Failed to download " + url + " after 3 attempts");
     }
 
     private static List<String> parseMasterIdx(String content, Set<String> ciks) {
         Set<String> cleanCiks = new HashSet<>();
-        for (String cik : ciks) cleanCiks.add(cik.replaceFirst("^0+(?!$)", ""));
+        for (String cik : ciks)
+            cleanCiks.add(cik.replaceFirst("^0+(?!$)", ""));
         Set<String> urls = new LinkedHashSet<>();
-        if (content == null) return new ArrayList<>(urls);
+        if (content == null)
+            return new ArrayList<>(urls);
         for (String line : content.split("\\R")) {
-            if (line.isBlank() || line.startsWith("CIK|") || line.startsWith("-----")) continue;
+            if (line.isBlank() || line.startsWith("CIK|") || line.startsWith("-----"))
+                continue;
             String[] parts = line.split("\\|", 6);
-            if (parts.length < 5) continue;
+            if (parts.length < 5)
+                continue;
             String fileCik = parts[0].trim().replaceFirst("^0+(?!$)", "");
             String formType = parts[2].trim();
-            if (!formType.startsWith("4")) continue;
+            if (!formType.startsWith("4"))
+                continue;
             if (cleanCiks.contains(fileCik)) {
                 String filename = parts[4].trim();
-                if (!filename.isEmpty()) urls.add(SEC_BASE + filename);
+                if (!filename.isEmpty())
+                    urls.add(SEC_BASE + filename);
             }
         }
         return new ArrayList<>(urls);
@@ -373,8 +417,11 @@ public class StockInsiderBot {
                 String browseUrl = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=" + cik
                         + "&type=4&owner=include&count=100&output=atom";
                 String atomXml = downloadText(browseUrl);
-                if (atomXml != null && !atomXml.isBlank()) urls.addAll(parseBrowseEdgarAtom(atomXml, maxLookbackDays));
-            } catch (Exception e) { System.err.println("Warning: browse-edgar fallback failed for CIK " + cik); }
+                if (atomXml != null && !atomXml.isBlank())
+                    urls.addAll(parseBrowseEdgarAtom(atomXml, maxLookbackDays));
+            } catch (Exception e) {
+                System.err.println("Warning: browse-edgar fallback failed for CIK " + cik);
+            }
         }
         return new ArrayList<>(urls);
     }
@@ -384,22 +431,28 @@ public class StockInsiderBot {
         Set<String> urls = new LinkedHashSet<>();
         LocalDate threshold = LocalDate.now().minusDays(maxLookbackDays);
         Pattern entryPattern = Pattern.compile("<entry>(.*?)</entry>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Pattern datePattern = Pattern.compile("<filing-date>(.*?)</filing-date>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Pattern hrefPattern = Pattern.compile("<filing-href>(.*?)</filing-href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern datePattern = Pattern.compile("<filing-date>(.*?)</filing-date>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern hrefPattern = Pattern.compile("<filing-href>(.*?)</filing-href>",
+                Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher entryMatcher = entryPattern.matcher(atomXml);
         while (entryMatcher.find()) {
             String entry = entryMatcher.group(1);
             Matcher dateMatcher = datePattern.matcher(entry);
             Matcher hrefMatcher = hrefPattern.matcher(entry);
-            if (!dateMatcher.find() || !hrefMatcher.find()) continue;
+            if (!dateMatcher.find() || !hrefMatcher.find())
+                continue;
             String filingDate = dateMatcher.group(1).trim();
             String filingHref = hrefMatcher.group(1).trim();
             try {
                 LocalDate date = LocalDate.parse(filingDate);
-                if (date.isBefore(threshold)) continue;
+                if (date.isBefore(threshold))
+                    continue;
                 String xmlUrl = findForm4XmlUrlFromIndexPage(filingHref);
-                if (xmlUrl != null) urls.add(xmlUrl);
-            } catch (Exception e) { /* skip */ }
+                if (xmlUrl != null)
+                    urls.add(xmlUrl);
+            } catch (Exception e) {
+                /* skip */ }
         }
         return new ArrayList<>(urls);
     }
@@ -408,18 +461,23 @@ public class StockInsiderBot {
         // 保持原样
         try {
             String html = downloadText(indexUrl);
-            if (html == null || html.isBlank()) return null;
+            if (html == null || html.isBlank())
+                return null;
             Pattern xmlLinkPattern = Pattern.compile("href=\"([^\"]*?/form4\\.xml)\"", Pattern.CASE_INSENSITIVE);
             Matcher matcher = xmlLinkPattern.matcher(html);
             String bestUrl = null;
             while (matcher.find()) {
                 String relative = matcher.group(1).trim();
                 String fullUrl = relative.startsWith("http") ? relative : "https://www.sec.gov" + relative;
-                if (!relative.toLowerCase(Locale.ROOT).contains("xslf345")) return fullUrl;
-                if (bestUrl == null) bestUrl = fullUrl;
+                if (!relative.toLowerCase(Locale.ROOT).contains("xslf345"))
+                    return fullUrl;
+                if (bestUrl == null)
+                    bestUrl = fullUrl;
             }
             return bestUrl;
-        } catch (Exception e) { return null; }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd,
@@ -447,39 +505,49 @@ public class StockInsiderBot {
 
         // 非衍生品表
         JsonNode nonDeriv = root.path("nonDerivativeTable");
-        if (nonDeriv.isMissingNode()) nonDeriv = root.path("ownershipDocument").path("nonDerivativeTable");
+        if (nonDeriv.isMissingNode())
+            nonDeriv = root.path("ownershipDocument").path("nonDerivativeTable");
         if (!nonDeriv.isMissingNode()) {
             JsonNode nonTrans = nonDeriv.path("nonDerivativeTransaction");
             if (!nonTrans.isMissingNode()) {
                 if (nonTrans.isArray()) {
                     for (JsonNode tx : nonTrans) {
                         AlertEntry entry = processTransaction(tx, ownerName, position, minimumUsd);
-                        if (entry != null) alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
+                        if (entry != null)
+                            alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
                     }
                 } else if (nonTrans.isObject()) {
                     AlertEntry entry = processTransaction(nonTrans, ownerName, position, minimumUsd);
-                    if (entry != null) alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
+                    if (entry != null)
+                        alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
                 }
-            } else logDebug("No non-derivativeTransaction for " + ticker);
-        } else logDebug("No non-derivativeTable for " + ticker);
+            } else
+                logDebug("No non-derivativeTransaction for " + ticker);
+        } else
+            logDebug("No non-derivativeTable for " + ticker);
 
         // 衍生品表（统一用 processTransaction）
         JsonNode deriv = root.path("derivativeTable");
-        if (deriv.isMissingNode()) deriv = root.path("ownershipDocument").path("derivativeTable");
+        if (deriv.isMissingNode())
+            deriv = root.path("ownershipDocument").path("derivativeTable");
         if (!deriv.isMissingNode()) {
             JsonNode derivTrans = deriv.path("derivativeTransaction");
             if (!derivTrans.isMissingNode()) {
                 if (derivTrans.isArray()) {
                     for (JsonNode tx : derivTrans) {
                         AlertEntry entry = processTransaction(tx, ownerName, position, minimumUsd);
-                        if (entry != null) alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
+                        if (entry != null)
+                            alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
                     }
                 } else if (derivTrans.isObject()) {
                     AlertEntry entry = processTransaction(derivTrans, ownerName, position, minimumUsd);
-                    if (entry != null) alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
+                    if (entry != null)
+                        alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
                 }
-            } else logDebug("No derivativeTransaction for " + ticker);
-        } else logDebug("No derivativeTable for " + ticker);
+            } else
+                logDebug("No derivativeTransaction for " + ticker);
+        } else
+            logDebug("No derivativeTable for " + ticker);
 
         alerts.putIfAbsent(ticker, new ArrayList<>());
         return alerts;
@@ -487,7 +555,8 @@ public class StockInsiderBot {
 
     private static boolean isOfficerOrDirector(JsonNode reportingOwner) {
         JsonNode rel = reportingOwner.path("reportingOwnerRelationship");
-        if (rel.isMissingNode()) return false;
+        if (rel.isMissingNode())
+            return false;
         String isDirector = rel.path("isDirector").asText();
         String isOfficer = rel.path("isOfficer").asText();
         return "true".equalsIgnoreCase(isDirector) || "1".contentEquals(isDirector) ||
@@ -501,38 +570,46 @@ public class StockInsiderBot {
             appendIfPresent(rel, "officerTitle", titles);
             appendIfPresent(rel, "directorTitle", titles);
             appendIfPresent(rel, "otherTitle", titles);
-            if (!titles.isEmpty()) return String.join(", ", titles);
+            if (!titles.isEmpty())
+                return String.join(", ", titles);
         }
-        String[] fallbacks = {"relationshipTitle", "reportingOwnerId.rptOwnerTitle"};
+        String[] fallbacks = { "relationshipTitle", "reportingOwnerId.rptOwnerTitle" };
         for (String path : fallbacks) {
             String val = pathValue(reportingOwner, path);
-            if (val != null && !val.isBlank()) return val;
+            if (val != null && !val.isBlank())
+                return val;
         }
         return "Unknown Position";
     }
 
     private static void appendIfPresent(JsonNode rel, String field, List<String> titles) {
         JsonNode node = rel.path(field);
-        if (!node.isMissingNode() && !node.asText().isBlank()) titles.add(node.asText().trim());
+        if (!node.isMissingNode() && !node.asText().isBlank())
+            titles.add(node.asText().trim());
     }
 
     private static String pathValue(JsonNode root, String path) {
         JsonNode node = root;
         for (String part : path.split("\\.")) {
             node = node.path(part);
-            if (node.isMissingNode()) return null;
+            if (node.isMissingNode())
+                return null;
         }
         return node.asText(null);
     }
 
-    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position, long minimumUsd) {
+    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
+            long minimumUsd) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
-        if (!"P".equals(code) && !"S".equals(code)) return null;
+        if (!"P".equals(code) && !"S".equals(code))
+            return null;
         long shares = extractLong(transaction, "transactionAmounts.transactionShares");
         double price = extractDouble(transaction, "transactionAmounts.transactionPricePerShare");
-        if (shares <= 0 || price <= 0) return null;
+        if (shares <= 0 || price <= 0)
+            return null;
         double amount = shares * price;
-        if (amount < minimumUsd) return null;
+        if (amount < minimumUsd)
+            return null;
         String type = "P".equals(code) ? "BUY" : "SELL";
         String security = extractText(transaction, "securityTitle", "stock");
         String is10b51 = transaction.path("transactionCoding").path("is10b51Transaction").asText();
@@ -542,33 +619,43 @@ public class StockInsiderBot {
 
     private static long extractLong(JsonNode root, String path) {
         JsonNode node = nodeAt(root, path);
-        if (node.isNumber()) return node.asLong(0);
-        if (node.isTextual() && !node.asText().isBlank()) return parseLongSafely(node.asText());
+        if (node.isNumber())
+            return node.asLong(0);
+        if (node.isTextual() && !node.asText().isBlank())
+            return parseLongSafely(node.asText());
         JsonNode valueNode = node.path("value");
         if (!valueNode.isMissingNode() && !valueNode.isNull()) {
-            if (valueNode.isNumber()) return valueNode.asLong(0);
-            if (valueNode.isTextual() && !valueNode.asText().isBlank()) return parseLongSafely(valueNode.asText());
+            if (valueNode.isNumber())
+                return valueNode.asLong(0);
+            if (valueNode.isTextual() && !valueNode.asText().isBlank())
+                return parseLongSafely(valueNode.asText());
         }
         return 0;
     }
 
     private static double extractDouble(JsonNode root, String path) {
         JsonNode node = nodeAt(root, path);
-        if (node.isNumber()) return node.asDouble(0.0);
-        if (node.isTextual() && !node.asText().isBlank()) return parseDoubleSafely(node.asText());
+        if (node.isNumber())
+            return node.asDouble(0.0);
+        if (node.isTextual() && !node.asText().isBlank())
+            return parseDoubleSafely(node.asText());
         JsonNode valueNode = node.path("value");
         if (!valueNode.isMissingNode() && !valueNode.isNull()) {
-            if (valueNode.isNumber()) return valueNode.asDouble(0.0);
-            if (valueNode.isTextual() && !valueNode.asText().isBlank()) return parseDoubleSafely(valueNode.asText());
+            if (valueNode.isNumber())
+                return valueNode.asDouble(0.0);
+            if (valueNode.isTextual() && !valueNode.asText().isBlank())
+                return parseDoubleSafely(valueNode.asText());
         }
         return 0.0;
     }
 
     private static String extractText(JsonNode root, String path, String fallback) {
         JsonNode node = nodeAt(root, path);
-        if (!node.isMissingNode() && !node.asText().isBlank()) return node.asText();
+        if (!node.isMissingNode() && !node.asText().isBlank())
+            return node.asText();
         JsonNode valueNode = node.path("value");
-        if (!valueNode.isMissingNode() && !valueNode.asText().isBlank()) return valueNode.asText();
+        if (!valueNode.isMissingNode() && !valueNode.asText().isBlank())
+            return valueNode.asText();
         return fallback;
     }
 
@@ -576,33 +663,46 @@ public class StockInsiderBot {
         JsonNode node = root;
         for (String part : path.split("\\.")) {
             node = node.path(part);
-            if (node.isMissingNode()) return node;
+            if (node.isMissingNode())
+                return node;
         }
         return node;
     }
 
     private static long parseLongSafely(String text) {
-        try { return (long) Double.parseDouble(text.replaceAll("[^0-9.\\-]", "")); } catch (NumberFormatException e) { return 0; }
+        try {
+            return (long) Double.parseDouble(text.replaceAll("[^0-9.\\-]", ""));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static double parseDoubleSafely(String text) {
-        try { return Double.parseDouble(text.replaceAll("[^0-9.\\-]", "")); } catch (NumberFormatException e) { return 0.0; }
+        try {
+            return Double.parseDouble(text.replaceAll("[^0-9.\\-]", ""));
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
     }
 
     private static String extractXmlPayload(String rawText) {
-        if (rawText == null) return "";
+        if (rawText == null)
+            return "";
         String cleanXml = "";
         int xmlStart = rawText.indexOf("<XML>");
         if (xmlStart >= 0) {
             int xmlEnd = rawText.indexOf("</XML>", xmlStart);
-            if (xmlEnd > xmlStart) cleanXml = rawText.substring(xmlStart + 5, xmlEnd);
+            if (xmlEnd > xmlStart)
+                cleanXml = rawText.substring(xmlStart + 5, xmlEnd);
         }
         if (cleanXml.isBlank()) {
             Matcher m = Pattern.compile("<ownershipDocument[^>]*>.*?</ownershipDocument>",
                     Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(rawText);
-            if (m.find()) cleanXml = m.group(0);
+            if (m.find())
+                cleanXml = m.group(0);
         }
-        if (cleanXml.isBlank()) return "";
+        if (cleanXml.isBlank())
+            return "";
         cleanXml = cleanXml.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
         cleanXml = cleanXml.replaceAll("&(?!(amp|apos|quot|lt|gt|#\\d+);)", "&amp;");
         cleanXml = cleanXml.replaceAll("</\\s+", "</");
@@ -613,44 +713,102 @@ public class StockInsiderBot {
 
     private static boolean sendNotification(String message) {
         String discordUrl = System.getenv("DISCORD_WEBHOOK_URL");
-        if (discordUrl == null || discordUrl.isBlank()) return false;
+        if (discordUrl == null || discordUrl.isBlank())
+            return false;
         return sendDiscordWebhook(discordUrl, "Insider Alert", message);
     }
 
     private static void sendErrorNotification(String errorMessage) {
         String discordUrl = System.getenv("DISCORD_WEBHOOK_URL");
-        if (discordUrl != null && !discordUrl.isBlank()) sendDiscordWebhook(discordUrl, "Insider Bot Error", errorMessage);
+        if (discordUrl != null && !discordUrl.isBlank())
+            sendDiscordWebhook(discordUrl, "Insider Bot Error", errorMessage);
     }
 
     private static boolean sendDiscordWebhook(String webhookUrl, String title, String message) {
         try {
-            String rawContent = "**" + title + "**\n" + message;
-            String escapedContent = escapeJson(rawContent);
-            final int MAX_CONTENT_LENGTH = 2000;
-            if (escapedContent.length() > MAX_CONTENT_LENGTH) {
-                escapedContent = escapedContent.substring(0, MAX_CONTENT_LENGTH - 3) + "...";
-            }
-            String payload = "{\"content\":\"" + escapedContent + "\"}";
-            HttpClient client = HttpClient.newBuilder().connectTimeout(HTTP_TIMEOUT).build();
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(webhookUrl))
-                    .timeout(HTTP_TIMEOUT).header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload)).build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() >= 200 && response.statusCode() < 300;
+            return sendDiscordMessages(webhookUrl, title, message);
         } catch (Exception e) {
             System.err.println("Warning: failed to send Discord notification: " + e.getMessage());
             return false;
         }
     }
 
+    private static boolean sendDiscordMessages(String webhookUrl, String title, String message) throws Exception {
+        String titleLine = "**" + title + "**\n";
+        final int MAX_CONTENT = 2000;
+
+        String fullBody = titleLine + message;
+        if (escapeJson(fullBody).length() <= MAX_CONTENT) {
+            // 整条消息未超长，直接发送
+            return sendSingleDiscordMessage(webhookUrl, fullBody);
+        }
+
+        // 需要分片发送
+        int titleEscapedLen = escapeJson(titleLine).length();
+        int maxChunkLen = MAX_CONTENT - titleEscapedLen - 5; // 留少量余量
+        if (maxChunkLen <= 0) {
+            System.err.println("Warning: Title too long, cannot send notification.");
+            return false;
+        }
+
+        boolean allSuccess = true;
+        int start = 0;
+        int totalLen = message.length();
+        while (start < totalLen) {
+            int end = Math.min(start + maxChunkLen, totalLen);
+            // 微调：确保转义后不超长
+            while (end > start) {
+                String chunk = message.substring(start, end);
+                if (escapeJson(titleLine + chunk).length() <= MAX_CONTENT) {
+                    break;
+                }
+                end--;
+            }
+            if (end == start)
+                break; // 极端情况：单个字符也超长
+
+            String chunk = message.substring(start, end);
+            if (!sendSingleDiscordMessage(webhookUrl, titleLine + chunk)) {
+                allSuccess = false;
+            }
+
+            start = end;
+            if (start < totalLen) {
+                Thread.sleep(500); // 避免触发速率限制
+            }
+        }
+        return allSuccess;
+    }
+
+    private static boolean sendSingleDiscordMessage(String webhookUrl, String content) {
+        try {
+            String escaped = escapeJson(content);
+            String payload = "{\"content\":\"" + escaped + "\"}";
+            HttpClient client = HttpClient.newBuilder().connectTimeout(HTTP_TIMEOUT).build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(webhookUrl))
+                    .timeout(HTTP_TIMEOUT)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() >= 200 && response.statusCode() < 300;
+        } catch (Exception e) {
+            System.err.println("Warning: failed to send single Discord message: " + e.getMessage());
+            return false;
+        }
+    }
+
     private static String escapeJson(String value) {
-        if (value == null) return "";
+        if (value == null)
+            return "";
         return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
     }
 
     private static class MasterIndex {
         final String indexDate;
         final String content;
+
         MasterIndex(String indexDate, String content) {
             this.indexDate = indexDate;
             this.content = content;
