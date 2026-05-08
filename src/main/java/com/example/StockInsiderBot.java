@@ -766,7 +766,6 @@ public class StockInsiderBot {
             return "";
         }
 
-        // 核心修复：直接定位 <ownershipDocument，无视 <XML> 标签和 SEC 恶心的文件头杂质
         int documentStart = rawText.indexOf("<ownershipDocument");
         if (documentStart >= 0) {
             int documentEnd = rawText.indexOf("</ownershipDocument>", documentStart);
@@ -774,11 +773,16 @@ public class StockInsiderBot {
                 // 精准切出纯粹的 XML 核心
                 String cleanXml = rawText.substring(documentStart, documentEnd + "</ownershipDocument>".length());
 
-                // 防弹清洗 1：去除经常导致 Jackson 崩溃的不可见 ASCII 控制字符
+                // 防弹清洗 1：去除导致解析器崩溃的不可见 ASCII 控制字符
                 cleanXml = cleanXml.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
 
-                // 防弹清洗 2：处理 SEC 填报中常见的未转义 & 符号 (例如公司名填了 "A & B" 会直接弄死解析器)
+                // 防弹清洗 2：处理 SEC 填报中常见的未转义 & 符号 (例如公司名 "A & B")
                 cleanXml = cleanXml.replaceAll("&(?!(amp|apos|quot|lt|gt|#\\d+);)", "&amp;");
+
+                // 防弹清洗 3：【核心修复】拦截导致 code 32 报错的非法 `<` 符号。
+                // 逻辑：合法的 XML 标签只能以字母、斜杠、问号、感叹号或下划线开头 (如 <tag, </tag, <?, <!)。
+                // 只要 `<` 后面跟的不是这些字符（比如跟着空格、数字、等号），统统强制替换为 &lt;
+                cleanXml = cleanXml.replaceAll("<(?=[^a-zA-Z_/?!])", "&lt;");
 
                 return cleanXml.trim();
             }

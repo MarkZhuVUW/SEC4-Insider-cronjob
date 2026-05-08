@@ -8,7 +8,7 @@ on:
       tickers:
         description: 'Comma-separated list of stock tickers'
         required: false
-        default: 'AAPL,GOOGL'
+        default: 'BRKB,MSFT'
       threshold:
         description: 'Minimum trade size in USD'
         required: false
