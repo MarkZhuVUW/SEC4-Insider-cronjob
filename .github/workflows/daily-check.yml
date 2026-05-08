@@ -2,7 +2,7 @@ name: Daily Insider Check
 
 on:
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "0 10 * * *"
       timezone: "Pacific/Auckland"
   workflow_dispatch:
     inputs:
