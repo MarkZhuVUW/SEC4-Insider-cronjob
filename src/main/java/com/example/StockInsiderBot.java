@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 
 public class StockInsiderBot {
 
-    private static final String SEC_BASE = "https://www.sec.gov/Archives/edgar/";
+    private static final String SEC_BASE = "https://www.sec.gov/Archives/";
     private static final String TICKER_URL = "https://www.sec.gov/include/ticker.txt";
     private static final String NTFY_URL = "https://ntfy.sh/";
     private static final String DEFAULT_SEC_USER_AGENT = "SEC4-Insider-Bot AdminContact@example.com";
@@ -95,8 +95,8 @@ public class StockInsiderBot {
             }
 
             if (form4Urls.isEmpty()) {
-                System.err.println("Unable to locate Form 4 filings for the requested tickers.");
-                return;
+                throw new Exception("Unable to locate Form 4 filings for the requested tickers in the last "
+                        + maxLookbackDays + " days.");
             }
 
             // Group alerts by ticker
@@ -109,13 +109,18 @@ public class StockInsiderBot {
                         allAlerts.computeIfAbsent(ticker, k -> new ArrayList<>()).addAll(alerts);
                     });
                 } catch (Exception ex) {
-                    System.err.println("Warning: failed to process Form 4 at " + url + " - " + ex.getMessage());
+                    if (ex.getMessage() != null && ex.getMessage().contains("404")) {
+                        System.err.println("Error: Form 4 file not found (404) at " + url);
+                        throw new Exception("Failed to fetch Form 4 from " + url + ": " + ex.getMessage(), ex);
+                    } else {
+                        System.err.println("Warning: failed to process Form 4 at " + url + " - " + ex.getMessage());
+                    }
                 }
             }
 
             if (allAlerts.isEmpty()) {
-                System.out.println("No large insider transactions found for " + String.join(", ", tickers) + " on "
-                        + masterIndex.indexDate + ".");
+                System.out.println("No large insider transactions found for " + String.join(", ", tickers)
+                        + " (threshold: $" + minimumUsd + ") on " + masterIndex.indexDate + ".");
                 return;
             }
 
@@ -389,20 +394,32 @@ public class StockInsiderBot {
 
     private static MasterIndex findMasterIndex(LocalDate startDate, int maxLookbackDays) {
         LocalDate date = startDate;
+        StringBuilder combinedContent = new StringBuilder();
+        LocalDate foundDate = null;
+
         for (int i = 0; i < maxLookbackDays; i++) {
             String dateStr = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            String url = SEC_BASE + "daily-index/" + date.getYear() + "/QTR" + ((date.getMonthValue() - 1) / 3 + 1)
+            String url = SEC_BASE + "edgar/daily-index/" + date.getYear() + "/QTR"
+                    + ((date.getMonthValue() - 1) / 3 + 1)
                     + "/master." + dateStr + ".idx";
             try {
                 String content = downloadText(url);
                 if (content != null && !content.isBlank()) {
                     System.out.println("Using SEC index: " + url);
-                    return new MasterIndex(dateStr, content);
+                    combinedContent.append(content);
+                    if (foundDate == null) {
+                        foundDate = date;
+                    }
                 }
             } catch (Exception e) {
-                System.err.println("Warning: could not download master index for " + date + " - " + e.getMessage());
+                logDebug("Could not download master index for " + date + " - " + e.getMessage());
             }
             date = date.minusDays(1);
+        }
+
+        if (combinedContent.length() > 0 && foundDate != null) {
+            return new MasterIndex(foundDate.format(DateTimeFormatter.ofPattern("yyyyMMdd")),
+                    combinedContent.toString());
         }
         return null;
     }
