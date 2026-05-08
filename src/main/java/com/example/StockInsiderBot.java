@@ -71,7 +71,23 @@ public class StockInsiderBot {
                 return;
             }
 
-            Set<String> ciks = mapTickersToCiks(tickers, tickerToCik);
+            // 核心逻辑重构：统一清洗输入，提取 CIK，剔除前导零，建立反向强映射
+            Map<String, String> cikToRequestedTicker = new HashMap<>();
+            Set<String> ciks = new HashSet<>();
+            for (String ticker : tickers) {
+                String cik = findCikForTicker(ticker, tickerToCik);
+                if (cik != null) {
+                    // 强制剔除 CIK 的前导零，避免在 master.idx 中哈希匹配失败
+                    String normalizedCik = cik.replaceFirst("^0+(?!$)", "");
+                    ciks.add(normalizedCik);
+                    // 建立 CIK 到用户输入 Ticker 的反向硬绑定，防范 SEC 填报员手误或多重 Ticker 乱象
+                    cikToRequestedTicker.put(normalizedCik, ticker);
+                    logDebug("Ticker mapped: " + ticker + " -> " + normalizedCik);
+                } else {
+                    System.err.println("Warning: ticker not found in SEC mapping: " + ticker);
+                }
+            }
+
             if (ciks.isEmpty()) {
                 System.err.println("No valid CIKs found for provided tickers.");
                 return;
@@ -94,7 +110,6 @@ public class StockInsiderBot {
             }
 
             if (form4Urls.isEmpty()) {
-                // No Form 4 found – could be weekend/holiday. Not an error.
                 String msg = "No Form 4 filings found for " + String.join(", ", tickers) + " in the last "
                         + maxLookbackDays + " days.";
                 System.out.println(msg);
@@ -102,16 +117,16 @@ public class StockInsiderBot {
                 return;
             }
 
-            // Group alerts by ticker and track failures
             Map<String, List<AlertEntry>> allAlerts = new LinkedHashMap<>();
-            Set<String> tickersWithForm4 = new HashSet<>(); // tickers for which at least one Form 4 was parsed
+            Set<String> tickersWithForm4 = new HashSet<>();
             int processedCount = 0;
             int failedCount = 0;
             for (String url : form4Urls) {
                 try {
                     String xml = downloadText(url);
-                    Map<String, List<AlertEntry>> parsed = parseForm4(xml, minimumUsd);
-                    // even if parsed is empty, we record the ticker(s) found as having a filing
+                    // 传入 cikToRequestedTicker 以便在解析时强行映射回用户视角的 Ticker
+                    Map<String, List<AlertEntry>> parsed = parseForm4(xml, minimumUsd, cikToRequestedTicker);
+                    
                     parsed.forEach((ticker, alerts) -> {
                         tickersWithForm4.add(ticker);
                         if (!alerts.isEmpty()) {
@@ -125,12 +140,10 @@ public class StockInsiderBot {
                 }
             }
 
-            // If all Form 4s failed, that's an error worth reporting
             if (processedCount == 0 && failedCount > 0) {
                 throw new Exception("Failed to process any of the " + failedCount + " Form 4 filings found.");
             }
 
-            // Build notification that includes every requested ticker
             String message = buildGroupedNotification(tickers, allAlerts, tickersWithForm4,
                     masterIndex != null ? masterIndex.indexDate : LocalDate.now().minusDays(1).toString());
             boolean notified = sendNotification(message);
@@ -142,8 +155,6 @@ public class StockInsiderBot {
         } catch (Exception e) {
             System.err.println("Fatal error: " + e.getMessage());
             e.printStackTrace();
-            // Only send error notification for real errors, not for "no data found"
-            // situations
             String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
             if (!errorMsg.contains("No Form 4 filings found") &&
                     !errorMsg.contains("No large insider transactions found") &&
@@ -179,10 +190,6 @@ public class StockInsiderBot {
         }
     }
 
-    /**
-     * Builds a notification that lists every requested ticker with either the
-     * alerts or a status message.
-     */
     private static String buildGroupedNotification(String[] tickers,
             Map<String, List<AlertEntry>> alertsByTicker,
             Set<String> tickersWithForm4,
@@ -214,9 +221,6 @@ public class StockInsiderBot {
         return msg.toString().trim();
     }
 
-    /**
-     * Builds a notification when no filings are found at all for any ticker.
-     */
     private static String buildMissingNotification(String[] tickers, String reason) {
         StringBuilder msg = new StringBuilder();
         msg.append("🔔 Insider Alerts\n\n");
@@ -337,78 +341,29 @@ public class StockInsiderBot {
         return map;
     }
 
-    private static Set<String> mapTickersToCiks(String[] tickers, Map<String, String> tickerToCik) {
-        Set<String> ciks = new HashSet<>();
-        for (String ticker : tickers) {
-            String cik = findCikForTicker(ticker, tickerToCik);
-            if (cik != null) {
-                ciks.add(cik);
-                logDebug("Ticker mapped: " + ticker + " -> " + cik);
-            } else {
-                System.err.println("Warning: ticker not found in SEC mapping: " + ticker);
-            }
-        }
-        return ciks;
-    }
-
     private static String findCikForTicker(String ticker, Map<String, String> tickerToCik) {
-        String upperTicker = ticker.toUpperCase(Locale.ROOT).trim();
-        if (upperTicker.isBlank()) {
-            return null;
-        }
+        // 暴力清洗：去空格、转大写、剔除所有非字母数字字符 (把 brk.b, brk-b, BRKB 统一降维成 BRKB)
+        String cleanInput = ticker.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        if (cleanInput.isBlank()) return null;
 
-        if (tickerToCik.containsKey(upperTicker)) {
-            return tickerToCik.get(upperTicker);
+        // 遍历 SEC 字典，对字典中的 Key 也进行同步清洗匹配
+        for (Map.Entry<String, String> entry : tickerToCik.entrySet()) {
+            String cleanDictKey = entry.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+            if (cleanDictKey.equals(cleanInput)) {
+                return entry.getValue();
+            }
         }
-
-        String normalized = upperTicker.replace('.', '-');
-        if (tickerToCik.containsKey(normalized)) {
-            return tickerToCik.get(normalized);
-        }
-
-        String noDash = upperTicker.replace("-", "");
-        if (!noDash.equals(upperTicker) && tickerToCik.containsKey(noDash)) {
-            return tickerToCik.get(noDash);
-        }
-
-        if (upperTicker.length() > 1) {
-            char last = upperTicker.charAt(upperTicker.length() - 1);
-            if ((last == 'A' || last == 'B') && upperTicker.charAt(upperTicker.length() - 2) != '-') {
-                String option = upperTicker.substring(0, upperTicker.length() - 1) + '-' + last;
-                if (tickerToCik.containsKey(option)) {
-                    return tickerToCik.get(option);
-                }
+        
+        // 遍历 Fallback 字典
+        for (Map.Entry<String, String> entry : FALLBACK_TICKER_MAP.entrySet()) {
+            String cleanDictKey = entry.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+            if (cleanDictKey.equals(cleanInput)) {
+                logDebug("Using fallback mapping for " + ticker + " -> " + entry.getValue());
+                return entry.getValue();
             }
         }
 
-        if (FALLBACK_TICKER_MAP.containsKey(upperTicker)) {
-            String cik = FALLBACK_TICKER_MAP.get(upperTicker);
-            logDebug("Using fallback mapping for " + upperTicker + " -> " + cik);
-            return cik;
-        }
-        if (FALLBACK_TICKER_MAP.containsKey(normalized)) {
-            String cik = FALLBACK_TICKER_MAP.get(normalized);
-            logDebug("Using fallback mapping for " + normalized + " -> " + cik);
-            return cik;
-        }
-        if (!noDash.equals(upperTicker) && FALLBACK_TICKER_MAP.containsKey(noDash)) {
-            String cik = FALLBACK_TICKER_MAP.get(noDash);
-            logDebug("Using fallback mapping for " + noDash + " -> " + cik);
-            return cik;
-        }
-        if (upperTicker.length() > 1) {
-            char last = upperTicker.charAt(upperTicker.length() - 1);
-            if ((last == 'A' || last == 'B') && upperTicker.charAt(upperTicker.length() - 2) != '-') {
-                String option = upperTicker.substring(0, upperTicker.length() - 1) + '-' + last;
-                if (FALLBACK_TICKER_MAP.containsKey(option)) {
-                    String cik = FALLBACK_TICKER_MAP.get(option);
-                    logDebug("Using fallback mapping for " + option + " -> " + cik);
-                    return cik;
-                }
-            }
-        }
-
-        logDebug("Ticker not found in any mapping: " + upperTicker);
+        logDebug("Ticker not found in any mapping: " + ticker);
         return null;
     }
 
@@ -605,18 +560,18 @@ public class StockInsiderBot {
         return null;
     }
 
-    /**
-     * Parses a single Form 4 XML and returns only transactions by
-     * officers/directors.
-     */
-    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd) throws Exception {
+    private static Map<String, List<AlertEntry>> parseForm4(String xml, long minimumUsd, Map<String, String> cikToRequestedTicker) throws Exception {
         Map<String, List<AlertEntry>> alerts = new LinkedHashMap<>();
         XmlMapper mapper = new XmlMapper();
         String xmlPayload = extractXmlPayload(xml);
         JsonNode root = mapper.readTree(xmlPayload);
 
         JsonNode issuer = root.path("issuer");
-        String ticker = issuer.path("issuerTradingSymbol").asText(issuer.path("issuerCIK").asText("Unknown"));
+        String rawXmlCik = issuer.path("issuerCIK").asText("Unknown");
+        String normalizedXmlCik = rawXmlCik.replaceFirst("^0+(?!$)", "");
+        
+        // 核心护城河：拒绝信任 SEC 填报员的输入，基于 CIK 强行映射回用户请求的 Ticker
+        String ticker = cikToRequestedTicker.getOrDefault(normalizedXmlCik, issuer.path("issuerTradingSymbol").asText("Unknown"));
 
         JsonNode reportingOwner = root.path("reportingOwner");
         if (!isOfficerOrDirector(reportingOwner)) {
@@ -656,7 +611,6 @@ public class StockInsiderBot {
             }
         }
 
-        // Mark that the ticker had a filing, even if no transactions above threshold
         if (!alerts.containsKey(ticker)) {
             alerts.put(ticker, new ArrayList<>());
         }
@@ -686,7 +640,6 @@ public class StockInsiderBot {
                 return String.join(", ", titles);
             }
         }
-        // Fallback paths
         String[] fallbacks = { "relationshipTitle", "reportingOwnerId.rptOwnerTitle" };
         for (String path : fallbacks) {
             String val = pathValue(reportingOwner, path);
@@ -790,7 +743,7 @@ public class StockInsiderBot {
 
     private static long parseLongSafely(String text) {
         try {
-            return Long.parseLong(text.replaceAll("[^0-9-]", ""));
+            return (long) Double.parseDouble(text.replaceAll("[^0-9.\\-]", ""));
         } catch (NumberFormatException e) {
             return 0;
         }
@@ -844,16 +797,12 @@ public class StockInsiderBot {
 
     private static boolean sendDiscordWebhook(String webhookUrl, String title, String message) {
         try {
-            // Build the raw content string
             String rawContent = "**" + title + "**\n" + message;
-            // Escape for JSON
             String escapedContent = escapeJson(rawContent);
 
-            // Discord's content field limit is 2000 characters
             final int MAX_CONTENT_LENGTH = 2000;
             if (escapedContent.length() > MAX_CONTENT_LENGTH) {
-                // Truncate and add ellipsis, ensuring we stay within 2000
-                int maxLen = MAX_CONTENT_LENGTH - 3; // leave room for "..."
+                int maxLen = MAX_CONTENT_LENGTH - 3;
                 if (maxLen > 0) {
                     escapedContent = escapedContent.substring(0, maxLen) + "...";
                 } else {

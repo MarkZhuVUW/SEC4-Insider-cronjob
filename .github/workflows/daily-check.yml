@@ -38,6 +38,17 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          # Also cache Maven dependencies (optional but speeds up even more)
+          cache: 'maven'
+
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          # Key is based on the pom.xml hash, ensuring fresh cache when deps change
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
       - name: Run bot
         run: mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }}"

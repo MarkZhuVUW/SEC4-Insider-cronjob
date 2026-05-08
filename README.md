@@ -3,6 +3,7 @@
 A simple Java bot that runs on GitHub Actions to check for large insider transactions (>500k USD) for specified US stock tickers.
 
 ## Features
+<img width="1206" height="2622" alt="124c8c6a6c8b33514828527908d2c2d4" src="https://github.com/user-attachments/assets/07e4b9ec-45d8-4c35-ae86-306cd23f52ad" />
 
 - Checks SEC Form 4 filings for the previous day
 - Filters for purchase (P) and sale (S) transactions over $500,000
