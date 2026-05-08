@@ -6,15 +6,16 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
 
 - Checks SEC Form 4 filings for the previous day
 - Filters for purchase (P) and sale (S) transactions over $500,000
-- Sends push notifications via ntfy.sh when alerts are found
+- Sends push notifications via Discord webhook when alerts are found
 - Runs daily at 9 AM UTC or manually via workflow dispatch
 
 ## Setup
 
 1. Fork this repository
-2. Set up ntfy.sh topic:
-   - Go to https://ntfy.sh and create a topic (e.g., `mystockalerts`)
-   - In your repo settings, add a secret `NTFY_TOPIC` with your topic name
+2. Set up Discord webhook for notifications:
+   - In your Discord server, go to Server Settings → Integrations → Webhooks
+   - Create a webhook and copy the webhook URL
+   - Add a repo secret named `DISCORD_WEBHOOK_URL` with that URL
 3. **Configure repository variables** (optional, for cron job defaults):
    - Go to your repository Settings → Secrets and variables → Variables
    - Add variables:
@@ -22,7 +23,10 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
      - `THRESHOLD_USD`: Minimum trade size (e.g., `500000`)
      - `LOOKBACK_DAYS`: Days to search back (e.g., `1`)
    - If not set, cron job uses built-in defaults: `AAPL,GOOGL`, `500000`, `1`
-4. Install ntfy app on your phone and subscribe to your topic
+4. Set up Discord webhook for notifications:
+   - In your Discord server, go to Server Settings → Integrations → Webhooks
+   - Create a webhook and copy the webhook URL
+   - Add a repo secret named `DISCORD_WEBHOOK_URL` with that URL
 5. Run the workflow manually or wait for daily schedule
 
 ## Usage
@@ -32,7 +36,9 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
 - **Configuration**: 
   - **Repository Variables** (for cron job defaults): Set `TICKERS`, `THRESHOLD_USD`, `LOOKBACK_DAYS` in repo Settings → Variables
   - **Environment Variables**: Can also be overridden via env vars in workflow
+  - **Push notification**: Set `DISCORD_WEBHOOK_URL` for Discord notifications.
   - **CLI options**: For local testing or custom runs
+  - **Ticker format**: `BRKB` or `BRK-B` are supported; `BRK.B` is not supported. Ticker input is case-insensitive.
 
 ### Example local CLI commands
 
@@ -48,7 +54,7 @@ mvn exec:java -Dexec.args="AAPL,GOOGL,MSFT --threshold=1000000 --lookback=3"
 mvn exec:java -Dexec.args="--tickers=ZTS --threshold=500000 --lookback=1 --mock=true"
 ```
 
-- If `NTFY_TOPIC` is not set, the bot logs alerts to the Actions console instead of failing.
+- If `DISCORD_WEBHOOK_URL` is not set, the bot logs alerts to the Actions console instead of failing.
 - Push notifications include ticker, owner, position, action, security, shares, price, and amount on separate lines.
 
 ## Requirements

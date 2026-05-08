@@ -19,7 +19,7 @@ on:
         default: '1'
 
 env:
-  NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
   SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
   TICKERS: ${{ github.event.inputs.tickers || vars.TICKERS || 'AAPL,GOOGL' }}

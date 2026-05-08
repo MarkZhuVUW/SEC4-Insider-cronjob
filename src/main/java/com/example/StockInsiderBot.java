@@ -25,7 +25,6 @@ public class StockInsiderBot {
 
     private static final String SEC_BASE = "https://www.sec.gov/Archives/";
     private static final String TICKER_URL = "https://www.sec.gov/include/ticker.txt";
-    private static final String NTFY_URL = "https://ntfy.sh/";
     private static final String DEFAULT_SEC_USER_AGENT = "SEC4-Insider-Bot AdminContact@example.com";
     private static final String DEFAULT_SEC_CONTACT_EMAIL = "contact@example.com";
     private static final long DEFAULT_MINIMUM_USD = 500_000L;
@@ -782,61 +781,62 @@ public class StockInsiderBot {
     }
 
     private static boolean sendNotification(String message) {
-        String topic = System.getenv("NTFY_TOPIC");
-        if (topic == null || topic.isBlank()) {
-            System.err.println("Warning: NTFY_TOPIC is not set. Notification will not be sent.");
+        String discordUrl = System.getenv("DISCORD_WEBHOOK_URL");
+        if (discordUrl == null || discordUrl.isBlank()) {
+            System.err.println("Warning: DISCORD_WEBHOOK_URL is not set. Notification will not be sent.");
             return false;
         }
+        return sendDiscordWebhook(discordUrl, "Insider Alert", message);
+    }
 
+    private static void sendErrorNotification(String errorMessage) {
+        String discordUrl = System.getenv("DISCORD_WEBHOOK_URL");
+        if (discordUrl == null || discordUrl.isBlank()) {
+            System.err.println("Warning: DISCORD_WEBHOOK_URL is not set. Error notification will not be sent.");
+            return;
+        }
+        sendDiscordWebhook(discordUrl, "Insider Bot Error", errorMessage);
+    }
+
+    private static boolean sendDiscordWebhook(String webhookUrl, String title, String message) {
         try {
+            String payload = "{\"content\":\"**" + escapeJson(title) + "**\\n" + escapeJson(message) + "\"}";
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(HTTP_TIMEOUT)
                     .build();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(NTFY_URL + topic))
+                    .uri(URI.create(webhookUrl))
                     .timeout(HTTP_TIMEOUT)
-                    .POST(HttpRequest.BodyPublishers.ofString(message))
-                    .header("Title", "Insider Alert")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(truncateDiscordPayload(payload)))
                     .build();
             HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 return true;
             }
-            System.err.println("Warning: ntfy.sh returned status " + response.statusCode());
+            System.err.println("Warning: Discord webhook returned status " + response.statusCode());
         } catch (Exception e) {
-            System.err.println("Warning: failed to send notification: " + e.getMessage());
+            System.err.println("Warning: failed to send Discord notification: " + e.getMessage());
         }
         return false;
     }
 
-    private static void sendErrorNotification(String errorMessage) {
-        String topic = System.getenv("NTFY_TOPIC");
-        if (topic == null || topic.isBlank()) {
-            System.err.println("Warning: NTFY_TOPIC is not set. Error notification will not be sent.");
-            return;
+    private static String escapeJson(String value) {
+        if (value == null) {
+            return "";
         }
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+    }
 
-        try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(HTTP_TIMEOUT)
-                    .build();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(NTFY_URL + topic))
-                    .timeout(HTTP_TIMEOUT)
-                    .POST(HttpRequest.BodyPublishers.ofString(errorMessage))
-                    .header("Title", "Insider Bot Error")
-                    .header("Priority", "high")
-                    .build();
-            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                System.out.println("Error notification sent.");
-            } else {
-                System.err.println(
-                        "Warning: ntfy.sh returned status " + response.statusCode() + " for error notification.");
-            }
-        } catch (Exception e) {
-            System.err.println("Warning: failed to send error notification: " + e.getMessage());
+    private static String truncateDiscordPayload(String payload) {
+        int maxLength = 1900;
+        if (payload.length() <= maxLength) {
+            return payload;
         }
+        return payload.substring(0, maxLength) + "...";
     }
 
     private static class MasterIndex {
