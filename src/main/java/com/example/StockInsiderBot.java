@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -90,7 +91,7 @@ public class StockInsiderBot {
                 return;
             }
 
-            LocalDate currentDate = LocalDate.now();
+            LocalDate currentDate = LocalDate.now(ZoneId.of("America/New_York"));
             List<String> form4Urls = new ArrayList<>();
             MasterIndex masterIndex = findMasterIndex(currentDate, maxLookbackDays);
             if (masterIndex != null) {
@@ -171,9 +172,11 @@ public class StockInsiderBot {
         final double amount;
         final boolean is10b51;
         final String transactionDate;
+        final long sharesOwnedAfter; // 新增
 
         AlertEntry(String ownerName, String position, String type, String security,
-                long shares, double price, double amount, boolean is10b51, String transactionDate) {
+                long shares, double price, double amount, boolean is10b51,
+                String transactionDate, long sharesOwnedAfter) {
             this.ownerName = ownerName;
             this.position = position;
             this.type = type;
@@ -183,6 +186,7 @@ public class StockInsiderBot {
             this.amount = amount;
             this.is10b51 = is10b51;
             this.transactionDate = transactionDate;
+            this.sharesOwnedAfter = sharesOwnedAfter;
         }
     }
 
@@ -197,12 +201,25 @@ public class StockInsiderBot {
             if (alertsByTicker.containsKey(ticker)) {
                 List<AlertEntry> entries = alertsByTicker.get(ticker);
                 for (AlertEntry e : entries) {
-                    String actionIcon = e.type.equals("BUY") ? "📈" : "📉";
+                    // 统一用 ▶ 箭头
+                    String actionIcon = "▶";
                     String planIcon = e.is10b51 ? " 🛡️[10b5-1]" : "";
                     String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
-                    msg.append(String.format("  📅 %s 👤 %s | 💼 %s | %s %s%s | %,d @ $%,.2f = $%,.2f\n",
+                    String sharesStr = formatNumber(e.shares);
+                    String amountStr = formatAmount(e.amount);
+                    String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
+
+                    String line = String.format(
+                            "  📅 %s 👤 %s | 💼 %s | %s %s%s | %s @ $%,.2f = %s | 持仓: %s\n",
                             date, e.ownerName, e.position, actionIcon, e.type, planIcon,
-                            e.shares, e.price, e.amount));
+                            sharesStr, e.price, amountStr, positionStr);
+
+                    if ("BUY".equals(e.type)) {
+                        // 用 diff 代码块实现红色高亮（- 前缀触发红色）
+                        msg.append("```diff\n- ").append(line.trim()).append("\n```\n");
+                    } else {
+                        msg.append(line);
+                    }
                 }
             } else if (tickersWithForm4.contains(ticker)) {
                 msg.append("  No transactions above threshold\n");
@@ -212,6 +229,22 @@ public class StockInsiderBot {
             msg.append("\n");
         }
         return msg.toString().trim();
+    }
+
+    private static String formatNumber(long num) {
+        if (num >= 1_000_000)
+            return String.format("%.1fM", num / 1_000_000.0);
+        if (num >= 1_000)
+            return String.format("%.1fK", num / 1_000.0);
+        return Long.toString(num);
+    }
+
+    private static String formatAmount(double amount) {
+        if (amount >= 1_000_000)
+            return String.format("$%.1fM", amount / 1_000_000.0);
+        if (amount >= 1_000)
+            return String.format("$%.1fK", amount / 1_000.0);
+        return String.format("$%.0f", amount);
     }
 
     private static String buildMissingNotification(String[] tickers, String reason) {
@@ -639,10 +672,16 @@ public class StockInsiderBot {
             transactionDate = transactionDate.substring(0, 10);
         }
 
+        long sharesOwnedAfter = extractLong(transaction, "postTransactionAmounts.sharesOwnedFollowingTransaction");
+        if (sharesOwnedAfter <= 0) {
+            sharesOwnedAfter = extractLong(transaction, "sharesOwnedFollowingTransaction");
+        }
+
         if (debugEnabled)
             logDebug("Creating alert: " + ownerName + " " + type + " " + shares + " shares at " + price + " amount="
-                    + amount + " date=" + transactionDate);
-        return new AlertEntry(ownerName, position, type, security, shares, price, amount, isPlan, transactionDate);
+                    + amount + " date=" + transactionDate + " ownedAfter=" + sharesOwnedAfter);
+        return new AlertEntry(ownerName, position, type, security, shares, price, amount, isPlan, transactionDate,
+                sharesOwnedAfter);
     }
 
     private static long extractLong(JsonNode root, String path) {
