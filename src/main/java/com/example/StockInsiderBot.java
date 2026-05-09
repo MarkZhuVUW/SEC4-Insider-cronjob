@@ -211,7 +211,8 @@ public class StockInsiderBot {
     for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
         String ticker = entry.getKey();
         List<AlertEntry> entries = entry.getValue();
-        msg.append("▪ ").append(ticker).append("\n");
+        // 股票代码加粗 + 前面加📍突出
+        msg.append("📍 **").append(ticker).append("**\n");
         for (AlertEntry e : entries) {
             String planIcon = e.is10b51 ? " 🛡️[10b5-1]" : "";
             String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
@@ -219,7 +220,7 @@ public class StockInsiderBot {
             String amountStr = formatAmount(e.amount);
             String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
 
-            // BUY/SELL 分别用不同 icon
+            // BUY/SELL 图标
             String actionIcon = e.type.equals("BUY") ? "📈" : "📉";
 
             String line = String.format(
@@ -228,17 +229,16 @@ public class StockInsiderBot {
                     sharesStr, e.price, amountStr, positionStr);
 
             if ("BUY".equals(e.type)) {
-                msg.append("```diff\n- ").append(line).append("\n```\n");
+                // 手机端用引用块+红色圆点+加粗实现红色高亮
+                msg.append(">>> 🔴 **").append(line).append("**\n");
             } else {
-                msg.append("  ").append(line).append("\n");
+                msg.append(line).append("\n");
             }
         }
         msg.append("\n");
     }
     return msg.toString().trim();
-}
-
-    private static String formatNumber(long num) {
+}   private static String formatNumber(long num) {
         if (num >= 1_000_000)
             return String.format("%.1fM", num / 1_000_000.0);
         if (num >= 1_000)
