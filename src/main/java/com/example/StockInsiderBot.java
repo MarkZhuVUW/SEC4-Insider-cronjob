@@ -90,7 +90,7 @@ public class StockInsiderBot {
                 return;
             }
 
-            LocalDate currentDate = LocalDate.now().minusDays(1);
+            LocalDate currentDate = LocalDate.now();
             List<String> form4Urls = new ArrayList<>();
             MasterIndex masterIndex = findMasterIndex(currentDate, maxLookbackDays);
             if (masterIndex != null) {
@@ -141,7 +141,7 @@ public class StockInsiderBot {
             }
 
             String message = buildGroupedNotification(tickers, allAlerts, tickersWithForm4,
-                    masterIndex != null ? masterIndex.indexDate : LocalDate.now().minusDays(1).toString());
+                    masterIndex != null ? masterIndex.indexDate : LocalDate.now().toString());
             boolean notified = sendNotification(message);
             System.out.println("Found " + allAlerts.values().stream().mapToInt(List::size).sum() + " alert(s) in " +
                     allAlerts.size() + " ticker(s). Notification sent: " + notified);
