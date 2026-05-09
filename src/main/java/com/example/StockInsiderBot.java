@@ -141,11 +141,27 @@ public class StockInsiderBot {
                 throw new Exception("Failed to process any of the " + failedCount + " Form 4 filings found.");
             }
 
-            String message = buildGroupedNotification(tickers, allAlerts, tickersWithForm4,
+            // 只保留有交易记录的 ticker
+            Map<String, List<AlertEntry>> filteredAlerts = new LinkedHashMap<>();
+            for (String ticker : tickers) {
+                if (allAlerts.containsKey(ticker) && !allAlerts.get(ticker).isEmpty()) {
+                    filteredAlerts.put(ticker, allAlerts.get(ticker));
+                }
+            }
+
+            if (filteredAlerts.isEmpty()) {
+                String noTradeMsg = "📭 No insider transactions found today.";
+                System.out.println(noTradeMsg);
+                sendNotification(noTradeMsg);
+                return;
+            }
+
+            String message = buildGroupedNotification(filteredAlerts,
                     masterIndex != null ? masterIndex.indexDate : LocalDate.now().toString());
             boolean notified = sendNotification(message);
-            System.out.println("Found " + allAlerts.values().stream().mapToInt(List::size).sum() + " alert(s) in " +
-                    allAlerts.size() + " ticker(s). Notification sent: " + notified);
+            System.out
+                    .println("Found " + filteredAlerts.values().stream().mapToInt(List::size).sum() + " alert(s) in " +
+                            filteredAlerts.size() + " ticker(s). Notification sent: " + notified);
             if (!notified) {
                 System.out.println(message);
             }
@@ -166,7 +182,6 @@ public class StockInsiderBot {
         final String ownerName;
         final String position;
         final String type;
-        final String security;
         final long shares;
         final double price;
         final double amount;
@@ -180,7 +195,6 @@ public class StockInsiderBot {
             this.ownerName = ownerName;
             this.position = position;
             this.type = type;
-            this.security = security;
             this.shares = shares;
             this.price = price;
             this.amount = amount;
@@ -190,41 +204,32 @@ public class StockInsiderBot {
         }
     }
 
-    private static String buildGroupedNotification(String[] tickers,
-            Map<String, List<AlertEntry>> alertsByTicker,
-            Set<String> tickersWithForm4,
+    private static String buildGroupedNotification(Map<String, List<AlertEntry>> alertsByTicker,
             String indexDate) {
         StringBuilder msg = new StringBuilder();
         msg.append("🔔⏰ Insider Alerts (").append(indexDate).append(")\n\n");
-        for (String ticker : tickers) {
-            msg.append("▶ ").append(ticker).append("\n");
-            if (alertsByTicker.containsKey(ticker)) {
-                List<AlertEntry> entries = alertsByTicker.get(ticker);
-                for (AlertEntry e : entries) {
-                    // 统一用 ▶ 箭头
-                    String actionIcon = "▶";
-                    String planIcon = e.is10b51 ? " 🛡️[10b5-1]" : "";
-                    String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
-                    String sharesStr = formatNumber(e.shares);
-                    String amountStr = formatAmount(e.amount);
-                    String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
+        for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
+            String ticker = entry.getKey();
+            List<AlertEntry> entries = entry.getValue();
+            // 使用统一的前缀符号（如▪）
+            msg.append("==> ").append(ticker).append("\n");
+            for (AlertEntry e : entries) {
+                String planIcon = e.is10b51 ? " 🛡️[10b5-1]" : "";
+                String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
+                String sharesStr = formatNumber(e.shares);
+                String amountStr = formatAmount(e.amount);
+                String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
 
-                    String line = String.format(
-                            "  📅 %s 👤 %s | 💼 %s | %s %s%s | %s @ $%,.2f = %s | 持仓: %s\n",
-                            date, e.ownerName, e.position, actionIcon, e.type, planIcon,
-                            sharesStr, e.price, amountStr, positionStr);
+                String line = String.format(
+                        "📅 %s 👤 %s | 💼 %s | %s%s | %s @ $%,.2f = %s | 持仓: %s",
+                        date, e.ownerName, e.position, e.type, planIcon,
+                        sharesStr, e.price, amountStr, positionStr);
 
-                    if ("BUY".equals(e.type)) {
-                        // 用 diff 代码块实现红色高亮（- 前缀触发红色）
-                        msg.append("```diff\n- ").append(line.trim()).append("\n```\n");
-                    } else {
-                        msg.append(line);
-                    }
+                if ("BUY".equals(e.type)) {
+                    msg.append("```diff\n- ").append(line).append("\n```\n");
+                } else {
+                    msg.append("  ").append(line).append("\n");
                 }
-            } else if (tickersWithForm4.contains(ticker)) {
-                msg.append("  No transactions above threshold\n");
-            } else {
-                msg.append("  No Form 4 filings found\n");
             }
             msg.append("\n");
         }
