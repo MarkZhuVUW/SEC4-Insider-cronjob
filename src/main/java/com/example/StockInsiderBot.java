@@ -11,9 +11,11 @@ import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -21,6 +23,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 public class StockInsiderBot {
 
@@ -782,6 +786,12 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
     }
 
     private static boolean sendNotification(String message) {
+        String dingTalkUrl = System.getenv("DING_WEBHOOK_URL");
+        if (dingTalkUrl != null && !dingTalkUrl.isBlank()) {
+            String dingTalkSecret = System.getenv("DING_WEBHOOK_SIGN");
+            return sendDingTalkWebhook(dingTalkUrl, dingTalkSecret, "Insider Alert", message);
+        }
+
         String discordUrl = System.getenv("DISCORD_WEBHOOK_URL");
         if (discordUrl == null || discordUrl.isBlank())
             return false;
@@ -789,9 +799,59 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
     }
 
     private static void sendErrorNotification(String errorMessage) {
+        String dingTalkUrl = System.getenv("DING_WEBHOOK_URL");
+        if (dingTalkUrl != null && !dingTalkUrl.isBlank()) {
+            String dingTalkSecret = System.getenv("DING_WEBHOOK_SIGN");
+            sendDingTalkWebhook(dingTalkUrl, dingTalkSecret, "Insider Bot Error", errorMessage);
+            return;
+        }
+
         String discordUrl = System.getenv("DISCORD_WEBHOOK_URL");
         if (discordUrl != null && !discordUrl.isBlank())
             sendDiscordWebhook(discordUrl, "Insider Bot Error", errorMessage);
+    }
+
+    private static boolean sendDingTalkWebhook(String webhookUrl, String secret, String title, String message) {
+        try {
+            String signedUrl = buildDingTalkUrl(webhookUrl, secret);
+            String markdown = "### " + title + "\n\n" + message;
+            String payload = "{\"msgtype\":\"markdown\",\"markdown\":{\"title\":\"" + escapeJson(title)
+                    + "\",\"text\":\"" + escapeJson(markdown) + "\"}}";
+
+            HttpClient client = HttpClient.newBuilder().connectTimeout(HTTP_TIMEOUT).build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(signedUrl))
+                    .timeout(HTTP_TIMEOUT)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            String body = response.body() == null ? "" : response.body();
+            boolean success = response.statusCode() >= 200 && response.statusCode() < 300
+                    && body.replace(" ", "").contains("\"errcode\":0");
+            if (!success) {
+                System.err.println("Warning: DingTalk notification failed. status=" + response.statusCode()
+                        + " body=" + body);
+            }
+            return success;
+        } catch (Exception e) {
+            System.err.println("Warning: failed to send DingTalk notification: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private static String buildDingTalkUrl(String webhookUrl, String secret) throws Exception {
+        if (secret == null || secret.isBlank())
+            return webhookUrl;
+
+        long timestamp = System.currentTimeMillis();
+        String stringToSign = timestamp + "\n" + secret;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] signData = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
+        String sign = URLEncoder.encode(Base64.getEncoder().encodeToString(signData), StandardCharsets.UTF_8);
+        String separator = webhookUrl.contains("?") ? "&" : "?";
+        return webhookUrl + separator + "timestamp=" + timestamp + "&sign=" + sign;
     }
 
     private static boolean sendDiscordWebhook(String webhookUrl, String title, String message) {
