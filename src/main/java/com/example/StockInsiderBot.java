@@ -225,14 +225,16 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
                     sharesStr, e.price, amountStr, positionStr);
 
             if ("BUY".equals(e.type)) {
-                line = "🔴 **" + line + "**";
+                // 红色圆点 + diff 代码块（桌面端红色字体，手机端可见红色圆点）
+                msg.append("```diff\n- 🔴 ").append(line).append("\n```\n");
+            } else {
+                msg.append("  ").append(line).append("\n");
             }
-            msg.append("  ").append(line).append("\n");
         }
         msg.append("\n");
     }
     return msg.toString().trim();
-}  private static String formatNumber(long num) {
+} private static String formatNumber(long num) {
         if (num >= 1_000_000)
             return String.format("%.1fM", num / 1_000_000.0);
         if (num >= 1_000)
