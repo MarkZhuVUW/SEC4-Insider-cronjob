@@ -305,25 +305,33 @@ public class StockInsiderBot {
                 String netDir = e.netAmount > 0 ? "🟢 净买入" : (e.netAmount < 0 ? "🔴 净卖出" : "⚪ 持平");
                 String netAmountStr = formatAmount(Math.abs(e.netAmount));
                 String netSharesStr = formatNumber(Math.abs(e.netShares));
-                // 计划交易加 📋，标题行一眼可辨
                 String planLabel = e.is10b51 ? " 📋" : "";
+
+                // 买入/卖出股数及金额内联显示
+                String tradeDetail = "";
+                if (e.buyShares > 0 && e.sellShares > 0) {
+                    tradeDetail = String.format(" | 买入 %s股(%s) | 卖出 %s股(%s)",
+                            formatNumber(e.buyShares), formatAmount(e.buyAmount),
+                            formatNumber(e.sellShares), formatAmount(e.sellAmount));
+                } else if (e.buyShares > 0) {
+                    tradeDetail = String.format(" | 买入 %s股(%s)",
+                            formatNumber(e.buyShares), formatAmount(e.buyAmount));
+                } else if (e.sellShares > 0) {
+                    tradeDetail = String.format(" | 卖出 %s股(%s)",
+                            formatNumber(e.sellShares), formatAmount(e.sellAmount));
+                }
 
                 String line = String.format(
                         "%s %s | %s%s\n" +
                         "  📅 %s  👤 %s  💼 %s\n" +
-                        "  总交易额 %s | %s %s (%s股)%s\n" +
+                        "  总交易额 %s | %s %s (%s股)%s%s\n" +
                         "  持仓 %s  (≈%s)",
                         netDir, e.ownerName, ticker, planLabel,
                         date, e.ownerName, e.position,
-                        formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr,
+                        formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr, tradeDetail,
                         positionStr, holdingValueStr);
 
-                if (e.buyAmount > 0 && e.sellAmount > 0) {
-                    line += "\n  买入 " + formatAmount(e.buyAmount) + "(" + formatNumber(e.buyShares) + "股)  |  卖出 " +
-                            formatAmount(e.sellAmount) + "(" + formatNumber(e.sellShares) + "股)";
-                }
-
-                // 计划交易灰白（无前缀），主动买入绿，主动卖出红
+                // 代码块着色：主动交易绿/红，计划交易灰色
                 if (e.is10b51) {
                     msg.append("```diff\n  ").append(line).append("\n```\n");
                 } else if ("BUY".equals(e.type)) {
@@ -449,7 +457,6 @@ public class StockInsiderBot {
                 Iterable<JsonNode> fnList = fnNode.isArray() ? fnNode : Collections.singletonList(fnNode);
                 for (JsonNode fn : fnList) {
                     String id = fn.path("id").asText(fn.path("_id").asText(""));
-                    // XmlMapper 把带属性的文本节点内容存在空字符串键 "" 下
                     String text = fn.path("").asText(fn.asText(""));
                     logDebug("Checking footnote " + id + " [" + text.substring(0, Math.min(80, text.length())) + "]");
                     if (referencedIds.contains(id) && containsSellToCoverText(text)) return true;
@@ -483,18 +490,10 @@ public class StockInsiderBot {
     }
 
     // ---------- 辅助方法 ----------
-
-    /**
-     * 兼容三种 XmlMapper 序列化形式：
-     *   "true" / "false"（字符串）
-     *   "1" / "0"（字符串）
-     *   ObjectNode { "value": "1" }（带子节点）
-     */
     private static boolean isTruthy(JsonNode node) {
         if (node == null || node.isMissingNode()) return false;
         String direct = node.asText("");
         if ("true".equalsIgnoreCase(direct) || "1".equals(direct)) return true;
-        // XmlMapper 有时把 <isDirector>1</isDirector> 解析成 ObjectNode{value:"1"}
         String val = node.path("value").asText("");
         return "true".equalsIgnoreCase(val) || "1".equals(val);
     }
@@ -799,9 +798,6 @@ public class StockInsiderBot {
         catch (Exception e) { return false; }
     }
 
-    /**
-     * 以完整的 ```diff...``` 块为最小切割单位发送，避免代码块被截断导致渲染失效。
-     */
     private static boolean sendDiscordMessages(String url, String title, String msg) throws Exception {
         String header = "**" + title + "**\n";
         String full = header + msg;
@@ -825,9 +821,6 @@ public class StockInsiderBot {
         return ok;
     }
 
-    /**
-     * 把通知文本按完整的 ```diff...``` 块拆分，保证每块不被跨消息截断。
-     */
     private static List<String> splitIntoBlocks(String msg) {
         List<String> blocks = new ArrayList<>();
         Pattern p = Pattern.compile("```diff\\n[\\s\\S]*?```", Pattern.MULTILINE);
