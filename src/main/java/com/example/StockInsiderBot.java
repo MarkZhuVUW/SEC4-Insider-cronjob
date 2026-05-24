@@ -283,57 +283,60 @@ public class StockInsiderBot {
         return result;
     }
 
-    // ---------- 通知构建 ----------
     private static String buildGroupedNotification(Map<String, List<AlertEntry>> alertsByTicker, String indexDate) {
-        StringBuilder msg = new StringBuilder();
-        msg.append("🔔 **Insider Alerts** (").append(indexDate).append(")\n\n");
+    StringBuilder msg = new StringBuilder();
+    msg.append("🔔 **Insider Alerts** (").append(indexDate).append(")\n\n");
 
-        for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
-            String ticker = entry.getKey();
-            msg.append("▸ **").append(ticker).append("**\n");
-            for (AlertEntry e : entry.getValue()) {
-                String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
-                String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
-                double totalHoldingValue = e.sharesOwnedAfter > 0 ? e.sharesOwnedAfter * e.price : 0;
-                String holdingValueStr = totalHoldingValue > 0 ? formatAmount(totalHoldingValue) : "N/A";
+    for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
+        String ticker = entry.getKey();
+        msg.append("▸ **").append(ticker).append("**\n");
+        for (AlertEntry e : entry.getValue()) {
+            String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
+            String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
+            double totalHoldingValue = e.sharesOwnedAfter > 0 ? e.sharesOwnedAfter * e.price : 0;
+            String holdingValueStr = totalHoldingValue > 0 ? formatAmount(totalHoldingValue) : "N/A";
 
-                long beforeShares = e.sharesOwnedAfter - e.netShares;
-                String pctStr = "";
-                if (beforeShares > 0) {
-                    double pct = Math.abs(e.netShares) * 100.0 / beforeShares;
-                    if (pct > 0) pctStr = String.format(" (%.1f%%)", pct);
-                }
-
-                String netDir = e.netAmount > 0 ? "🟢 净买入" : (e.netAmount < 0 ? "🔴 净卖出" : "⚪ 持平");
-                String netAmountStr = formatAmount(Math.abs(e.netAmount));
-                String netSharesStr = formatNumber(Math.abs(e.netShares));
-                String planLabel = e.is10b51 ? " [10b5-1]" : "";
-
-                String line = String.format(
-                        "%s %s | %s%s\n" +
-                        "  📅 %s  👤 %s  💼 %s\n" +
-                        "  总交易额 %s | %s %s (%s股)%s\n" +
-                        "  持仓 %s  (≈%s)",
-                        netDir, e.ownerName, ticker, planLabel,
-                        date, e.ownerName, e.position,
-                        formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr,
-                        positionStr, holdingValueStr);
-
-                if (e.buyAmount > 0 && e.sellAmount > 0) {
-                    line += "\n  买入 " + formatAmount(e.buyAmount) + "(" + formatNumber(e.buyShares) + "股)  |  卖出 " +
-                            formatAmount(e.sellAmount) + "(" + formatNumber(e.sellShares) + "股)";
-                }
-
-                if ("BUY".equals(e.type)) {
-                    msg.append("```diff\n+ ").append(line).append("\n```\n");
-                } else {
-                    msg.append("```diff\n- ").append(line).append("\n```\n");
-                }
-                msg.append("\n");
+            long beforeShares = e.sharesOwnedAfter - e.netShares;
+            String pctStr = "";
+            if (beforeShares > 0) {
+                double pct = Math.abs(e.netShares) * 100.0 / beforeShares;
+                if (pct > 0) pctStr = String.format(" (%.1f%%)", pct);
             }
+
+            String netDir = e.netAmount > 0 ? "🟢 净买入" : (e.netAmount < 0 ? "🔴 净卖出" : "⚪ 持平");
+            String netAmountStr = formatAmount(Math.abs(e.netAmount));
+            String netSharesStr = formatNumber(Math.abs(e.netShares));
+            // 计划交易加 📋，标题行一眼可辨
+            String planLabel = e.is10b51 ? " 📋" : "";
+
+            String line = String.format(
+                    "%s %s | %s%s\n" +
+                    "  📅 %s  👤 %s  💼 %s\n" +
+                    "  总交易额 %s | %s %s (%s股)%s\n" +
+                    "  持仓 %s  (≈%s)",
+                    netDir, e.ownerName, ticker, planLabel,
+                    date, e.ownerName, e.position,
+                    formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr,
+                    positionStr, holdingValueStr);
+
+            if (e.buyAmount > 0 && e.sellAmount > 0) {
+                line += "\n  买入 " + formatAmount(e.buyAmount) + "(" + formatNumber(e.buyShares) + "股)  |  卖出 " +
+                        formatAmount(e.sellAmount) + "(" + formatNumber(e.sellShares) + "股)";
+            }
+
+            // 计划交易用无前缀（灰白），主动交易保留 +/- 绿红
+            if (e.is10b51) {
+                msg.append("```diff\n  ").append(line).append("\n```\n");
+            } else if ("BUY".equals(e.type)) {
+                msg.append("```diff\n+ ").append(line).append("\n```\n");
+            } else {
+                msg.append("```diff\n- ").append(line).append("\n```\n");
+            }
+            msg.append("\n");
         }
-        return msg.toString().trim();
     }
+    return msg.toString().trim();
+}
 
     // ---------- Form 4 解析 ----------
     private static Map<String, List<AlertEntry>> parseForm4(String xml,
