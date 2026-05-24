@@ -185,10 +185,10 @@ public class StockInsiderBot {
     private static class AlertEntry {
         final String ownerName;
         final String position;
-        final String type;           // BUY / SELL (net direction)
-        final long shares;           // 用于展示的股数（买入为正，卖出正数，但内部含义见注释）
-        final double price;          // 加权平均价格
-        final double amount;         // 总交易额（买入+卖出）
+        final String type; // BUY / SELL (net direction)
+        final long shares; // 用于展示的股数（买入为正，卖出正数，但内部含义见注释）
+        final double price; // 加权平均价格
+        final double amount; // 总交易额（买入+卖出）
         final boolean is10b51;
         final String transactionDate;
         final long sharesOwnedAfter;
@@ -196,16 +196,16 @@ public class StockInsiderBot {
         // 新增聚合字段
         final double buyAmount;
         final double sellAmount;
-        final double netAmount;      // 净买入金额（正=净买）
+        final double netAmount; // 净买入金额（正=净买）
         final long buyShares;
         final long sellShares;
-        final long netShares;        // 净买入股数（正=净买）
+        final long netShares; // 净买入股数（正=净买）
 
         AlertEntry(String ownerName, String position, String type,
-                   long shares, double price, double amount, boolean is10b51,
-                   String transactionDate, long sharesOwnedAfter,
-                   double buyAmount, double sellAmount, double netAmount,
-                   long buyShares, long sellShares, long netShares) {
+                long shares, double price, double amount, boolean is10b51,
+                String transactionDate, long sharesOwnedAfter,
+                double buyAmount, double sellAmount, double netAmount,
+                long buyShares, long sellShares, long netShares) {
             this.ownerName = ownerName;
             this.position = position;
             this.type = type;
@@ -225,7 +225,8 @@ public class StockInsiderBot {
     }
 
     // ---------- 聚合：同人同日合并，总交易额大于阈值 ----------
-    private static Map<String, List<AlertEntry>> aggregateAlerts(Map<String, List<AlertEntry>> rawAlerts, long threshold) {
+    private static Map<String, List<AlertEntry>> aggregateAlerts(Map<String, List<AlertEntry>> rawAlerts,
+            long threshold) {
         Map<String, List<AlertEntry>> result = new LinkedHashMap<>();
         for (Map.Entry<String, List<AlertEntry>> entry : rawAlerts.entrySet()) {
             String ticker = entry.getKey();
@@ -260,7 +261,8 @@ public class StockInsiderBot {
                     }
 
                     double totalAmount = totalBuyAmount + totalSellAmount;
-                    if (totalAmount < threshold) continue; // 总交易额不达标则忽略
+                    if (totalAmount < threshold)
+                        continue; // 总交易额不达标则忽略
 
                     double netAmount = totalBuyAmount - totalSellAmount;
                     long netShares = totalBuyShares - totalSellShares;
@@ -310,7 +312,8 @@ public class StockInsiderBot {
                 String pctStr = "";
                 if (beforeShares > 0) {
                     double pct = Math.abs(e.netShares) * 100.0 / beforeShares;
-                    if (pct > 0) pctStr = String.format(" (%.1f%%)", pct);
+                    if (pct > 0)
+                        pctStr = String.format(" (%.1f%%)", pct);
                 }
 
                 String netDir = e.netAmount > 0 ? "🟢 净买入" : (e.netAmount < 0 ? "🔴 净卖出" : "⚪ 持平");
@@ -321,9 +324,9 @@ public class StockInsiderBot {
                 // 基本信息行
                 String line = String.format(
                         "%s %s | %s%s\n" +
-                        "  📅 %s  👤 %s  💼 %s\n" +
-                        "  总交易额 %s | %s %s (%s股)%s\n" +
-                        "  持仓 %s  (≈%s)",
+                                "  📅 %s  👤 %s  💼 %s\n" +
+                                "  总交易额 %s | %s %s (%s股)%s\n" +
+                                "  持仓 %s  (≈%s)",
                         netDir, e.ownerName, ticker, planLabel,
                         date, e.ownerName, e.position,
                         formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr,
@@ -373,13 +376,14 @@ public class StockInsiderBot {
 
         // 处理非衍生品表
         JsonNode nonDeriv = root.path("nonDerivativeTable");
-        if (nonDeriv.isMissingNode()) nonDeriv = root.path("ownershipDocument").path("nonDerivativeTable");
+        if (nonDeriv.isMissingNode())
+            nonDeriv = root.path("ownershipDocument").path("nonDerivativeTable");
         if (!nonDeriv.isMissingNode()) {
             JsonNode nonTrans = nonDeriv.path("nonDerivativeTransaction");
             if (!nonTrans.isMissingNode()) {
                 Iterable<JsonNode> txList = nonTrans.isArray() ? nonTrans : Collections.singletonList(nonTrans);
                 for (JsonNode tx : txList) {
-                    AlertEntry entry = processTransaction(tx, ownerName, position);
+                    AlertEntry entry = processTransaction(tx, ownerName, position, root); // ← 加 root
                     if (entry != null) {
                         alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
                     }
@@ -389,13 +393,14 @@ public class StockInsiderBot {
 
         // 处理衍生品表
         JsonNode derivTable = root.path("derivativeTable");
-        if (derivTable.isMissingNode()) derivTable = root.path("ownershipDocument").path("derivativeTable");
+        if (derivTable.isMissingNode())
+            derivTable = root.path("ownershipDocument").path("derivativeTable");
         if (!derivTable.isMissingNode()) {
             JsonNode derivTrans = derivTable.path("derivativeTransaction");
             if (!derivTrans.isMissingNode()) {
                 Iterable<JsonNode> txList = derivTrans.isArray() ? derivTrans : Collections.singletonList(derivTrans);
                 for (JsonNode tx : txList) {
-                    AlertEntry entry = processTransaction(tx, ownerName, position);
+                    AlertEntry entry = processTransaction(tx, ownerName, position, root); // ← 加 root
                     if (entry != null) {
                         alerts.computeIfAbsent(ticker, k -> new ArrayList<>()).add(entry);
                     }
@@ -407,31 +412,29 @@ public class StockInsiderBot {
     }
 
     // 单笔交易处理（无金额阈值，只过滤非买卖和 sell-to-cover）
-    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position) {
+    private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
+            JsonNode docRoot) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
-        if (!"P".equals(code) && !"S".equals(code)) {
+        if (!"P".equals(code) && !"S".equals(code))
             return null;
-        }
 
-        // 过滤行权日期（通常是衍生品转换，非实际市场交易）
-        if (!transaction.path("exerciseDate").isMissingNode() && !transaction.path("exerciseDate").asText().isBlank()) {
+        if (!transaction.path("exerciseDate").isMissingNode() && !transaction.path("exerciseDate").asText().isBlank())
             return null;
-        }
 
-        // 过滤 sell-to-cover（仅被动交税）
-        if (isSellToCover(transaction)) {
+        // ← 传入 docRoot
+        if (isSellToCover(transaction, docRoot))
             return null;
-        }
 
         long shares = extractLong(transaction, "transactionAmounts.transactionShares");
         double price = extractDouble(transaction, "transactionAmounts.transactionPricePerShare");
-        if (shares <= 0 || price <= 0) return null;
+        if (shares <= 0 || price <= 0)
+            return null;
 
         double amount = shares * price;
         String type = "P".equals(code) ? "BUY" : "SELL";
         boolean isPlan = "true".equalsIgnoreCase(
-                transaction.path("transactionCoding").path("is10b51Transaction").asText()
-        ) || "1".equals(transaction.path("transactionCoding").path("is10b51Transaction").asText());
+                transaction.path("transactionCoding").path("is10b51Transaction").asText())
+                || "1".equals(transaction.path("transactionCoding").path("is10b51Transaction").asText());
 
         String transactionDate = extractText(transaction, "transactionDate", "");
         if (!transactionDate.isEmpty() && transactionDate.length() >= 10) {
@@ -457,28 +460,72 @@ public class StockInsiderBot {
     }
 
     // 检测是否 sell-to-cover（被动交税卖出）
-    private static boolean isSellToCover(JsonNode transaction) {
-        // 检查脚注/备注文本
-        String[] paths = {"footnote", "footnotes", "remarks", "transactionText", "explanatoryText"};
+    private static boolean isSellToCover(JsonNode transaction, JsonNode docRoot) {
+        // 原有内联文本检查
+        String[] paths = { "footnote", "footnotes", "remarks", "transactionText", "explanatoryText" };
         for (String p : paths) {
-            String text = extractText(transaction, p, "").toLowerCase(Locale.ROOT);
-            if (text.contains("sell to cover") || text.contains("sell-to-cover") ||
-                text.contains("withhold") || text.contains("tax obligation") ||
-                text.contains("satisfy tax") || text.contains("satisfy withholding")) {
+            if (containsSellToCoverText(extractText(transaction, p, "")))
                 return true;
+        }
+
+        // 收集本 transaction 内所有 footnoteId 引用
+        Set<String> referencedIds = new HashSet<>();
+        collectFootnoteIds(transaction, referencedIds);
+        logDebug("footnoteIds in tx: " + referencedIds);
+
+        if (!referencedIds.isEmpty() && docRoot != null) {
+            JsonNode footnotesNode = docRoot.path("footnotes");
+            if (!footnotesNode.isMissingNode()) {
+                JsonNode fnNode = footnotesNode.path("footnote");
+                Iterable<JsonNode> fnList = fnNode.isArray() ? fnNode : Collections.singletonList(fnNode);
+                for (JsonNode fn : fnList) {
+                    String id = fn.path("id").asText(fn.path("_id").asText(""));
+                    String text = fn.path("").asText(fn.asText("")); // ← 核心修复
+                    logDebug("Checking footnote " + id + " [" + text.substring(0, Math.min(60, text.length())) + "]");
+                    if (referencedIds.contains(id) && containsSellToCoverText(text))
+                        return true;
+                }
             }
         }
         return false;
     }
 
+    private static boolean containsSellToCoverText(String raw) {
+        String t = raw.toLowerCase(Locale.ROOT);
+        return t.contains("sell to cover") || t.contains("sell-to-cover")
+                || t.contains("tax withholding") || t.contains("satisfy tax")
+                || t.contains("satisfy withholding") || t.contains("withhold")
+                || t.contains("tax obligation") || t.contains("net settlement")
+                || t.contains("rsu") && (t.contains("tax") || t.contains("vest"));
+    }
+
+    // ④ 递归收集 transaction 节点内所有 <footnoteId id="Fx"/> 的 id 值
+    private static void collectFootnoteIds(JsonNode node, Set<String> ids) {
+        if (node == null || node.isMissingNode())
+            return;
+        if (node.isObject()) {
+            // <footnoteId id="F1"/> 被 XmlMapper 解析后，"id"/"_id" 就在 footnoteId 节点上
+            JsonNode fnId = node.path("footnoteId");
+            if (!fnId.isMissingNode()) {
+                String id = fnId.path("id").asText(fnId.path("_id").asText(fnId.asText("")));
+                if (!id.isBlank())
+                    ids.add(id);
+            }
+            node.fields().forEachRemaining(e -> collectFootnoteIds(e.getValue(), ids));
+        } else if (node.isArray()) {
+            node.forEach(child -> collectFootnoteIds(child, ids));
+        }
+    }
+
     // ---------- 辅助方法（保持原有逻辑，略作调整） ----------
     private static boolean isOfficerOrDirector(JsonNode reportingOwner) {
         JsonNode rel = reportingOwner.path("reportingOwnerRelationship");
-        if (rel.isMissingNode()) return false;
+        if (rel.isMissingNode())
+            return false;
         return "true".equalsIgnoreCase(rel.path("isDirector").asText()) ||
-               "1".equals(rel.path("isDirector").asText()) ||
-               "true".equalsIgnoreCase(rel.path("isOfficer").asText()) ||
-               "1".equals(rel.path("isOfficer").asText());
+                "1".equals(rel.path("isDirector").asText()) ||
+                "true".equalsIgnoreCase(rel.path("isOfficer").asText()) ||
+                "1".equals(rel.path("isOfficer").asText());
     }
 
     private static String extractPosition(JsonNode reportingOwner) {
@@ -487,47 +534,60 @@ public class StockInsiderBot {
         appendIfPresent(rel, "officerTitle", titles);
         appendIfPresent(rel, "directorTitle", titles);
         appendIfPresent(rel, "otherTitle", titles);
-        if (!titles.isEmpty()) return String.join(", ", titles);
+        if (!titles.isEmpty())
+            return String.join(", ", titles);
         String alt = rel.path("relationshipTitle").asText();
-        if (!alt.isBlank()) return alt;
+        if (!alt.isBlank())
+            return alt;
         alt = reportingOwner.path("reportingOwnerId").path("rptOwnerTitle").asText();
         return alt.isBlank() ? "Unknown Position" : alt;
     }
 
     private static void appendIfPresent(JsonNode rel, String field, List<String> titles) {
         JsonNode node = rel.path(field);
-        if (!node.isMissingNode() && !node.asText().isBlank()) titles.add(node.asText().trim());
+        if (!node.isMissingNode() && !node.asText().isBlank())
+            titles.add(node.asText().trim());
     }
 
     private static long extractLong(JsonNode root, String path) {
         JsonNode node = nodeAt(root, path);
-        if (node.isNumber()) return node.asLong(0);
-        if (node.isTextual() && !node.asText().isBlank()) return parseLongSafely(node.asText());
+        if (node.isNumber())
+            return node.asLong(0);
+        if (node.isTextual() && !node.asText().isBlank())
+            return parseLongSafely(node.asText());
         JsonNode val = node.path("value");
         if (!val.isMissingNode() && !val.isNull()) {
-            if (val.isNumber()) return val.asLong(0);
-            if (val.isTextual() && !val.asText().isBlank()) return parseLongSafely(val.asText());
+            if (val.isNumber())
+                return val.asLong(0);
+            if (val.isTextual() && !val.asText().isBlank())
+                return parseLongSafely(val.asText());
         }
         return 0;
     }
 
     private static double extractDouble(JsonNode root, String path) {
         JsonNode node = nodeAt(root, path);
-        if (node.isNumber()) return node.asDouble(0.0);
-        if (node.isTextual() && !node.asText().isBlank()) return parseDoubleSafely(node.asText());
+        if (node.isNumber())
+            return node.asDouble(0.0);
+        if (node.isTextual() && !node.asText().isBlank())
+            return parseDoubleSafely(node.asText());
         JsonNode val = node.path("value");
         if (!val.isMissingNode() && !val.isNull()) {
-            if (val.isNumber()) return val.asDouble(0.0);
-            if (val.isTextual() && !val.asText().isBlank()) return parseDoubleSafely(val.asText());
+            if (val.isNumber())
+                return val.asDouble(0.0);
+            if (val.isTextual() && !val.asText().isBlank())
+                return parseDoubleSafely(val.asText());
         }
         return 0.0;
     }
 
     private static String extractText(JsonNode root, String path, String fallback) {
         JsonNode node = nodeAt(root, path);
-        if (!node.isMissingNode() && !node.asText().isBlank()) return node.asText();
+        if (!node.isMissingNode() && !node.asText().isBlank())
+            return node.asText();
         JsonNode val = node.path("value");
-        if (!val.isMissingNode() && !val.asText().isBlank()) return val.asText();
+        if (!val.isMissingNode() && !val.asText().isBlank())
+            return val.asText();
         return fallback;
     }
 
@@ -540,24 +600,34 @@ public class StockInsiderBot {
     }
 
     private static long parseLongSafely(String text) {
-        try { return (long) Double.parseDouble(text.replaceAll("[^0-9.\\-]", "")); }
-        catch (NumberFormatException e) { return 0; }
+        try {
+            return (long) Double.parseDouble(text.replaceAll("[^0-9.\\-]", ""));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static double parseDoubleSafely(String text) {
-        try { return Double.parseDouble(text.replaceAll("[^0-9.\\-]", "")); }
-        catch (NumberFormatException e) { return 0.0; }
+        try {
+            return Double.parseDouble(text.replaceAll("[^0-9.\\-]", ""));
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
     }
 
     private static String formatNumber(long num) {
-        if (num >= 1_000_000) return String.format("%.1fM", num / 1_000_000.0);
-        if (num >= 1_000) return String.format("%.1fK", num / 1_000.0);
+        if (num >= 1_000_000)
+            return String.format("%.1fM", num / 1_000_000.0);
+        if (num >= 1_000)
+            return String.format("%.1fK", num / 1_000.0);
         return Long.toString(num);
     }
 
     private static String formatAmount(double amount) {
-        if (amount >= 1_000_000) return String.format("$%.1fM", amount / 1_000_000.0);
-        if (amount >= 1_000) return String.format("$%.1fK", amount / 1_000.0);
+        if (amount >= 1_000_000)
+            return String.format("$%.1fM", amount / 1_000_000.0);
+        if (amount >= 1_000)
+            return String.format("$%.1fK", amount / 1_000.0);
         return String.format("$%.0f", amount);
     }
 
@@ -566,41 +636,61 @@ public class StockInsiderBot {
         Map<String, String> options = new HashMap<>();
         String positional = null;
         for (String arg : args) {
-            if (arg == null || arg.isBlank()) continue;
+            if (arg == null || arg.isBlank())
+                continue;
             if (arg.startsWith("--")) {
                 String normalized = arg.substring(2);
                 String[] parts = normalized.split("=", 2);
-                if (parts.length == 2) options.put(parts[0].toLowerCase(Locale.ROOT), parts[1]);
-                else options.put(parts[0].toLowerCase(Locale.ROOT), "true");
-            } else if (positional == null) positional = arg;
+                if (parts.length == 2)
+                    options.put(parts[0].toLowerCase(Locale.ROOT), parts[1]);
+                else
+                    options.put(parts[0].toLowerCase(Locale.ROOT), "true");
+            } else if (positional == null)
+                positional = arg;
         }
         options.put("positional", positional);
         return options;
     }
 
     private static String firstNonBlank(String... values) {
-        for (String v : values) if (v != null && !v.isBlank()) return v;
+        for (String v : values)
+            if (v != null && !v.isBlank())
+                return v;
         return null;
     }
 
     private static boolean debugEnabled = DEFAULT_DEBUG;
-    private static void setDebug(boolean enabled) { debugEnabled = enabled; }
-    private static void logDebug(String msg) { if (debugEnabled) System.out.println("DEBUG: " + msg); }
+
+    private static void setDebug(boolean enabled) {
+        debugEnabled = enabled;
+    }
+
+    private static void logDebug(String msg) {
+        if (debugEnabled)
+            System.out.println("DEBUG: " + msg);
+    }
 
     private static long parseLong(String value, long fallback) {
-        try { if (value != null && !value.isBlank()) return Long.parseLong(value.trim()); }
-        catch (NumberFormatException ignored) {}
+        try {
+            if (value != null && !value.isBlank())
+                return Long.parseLong(value.trim());
+        } catch (NumberFormatException ignored) {
+        }
         return fallback;
     }
 
     private static int parseInt(String value, int fallback) {
-        try { if (value != null && !value.isBlank()) return Integer.parseInt(value.trim()); }
-        catch (NumberFormatException ignored) {}
+        try {
+            if (value != null && !value.isBlank())
+                return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+        }
         return fallback;
     }
 
     private static boolean parseBoolean(String value, boolean fallback) {
-        if (value == null || value.isBlank()) return fallback;
+        if (value == null || value.isBlank())
+            return fallback;
         String v = value.trim().toLowerCase(Locale.ROOT);
         return !(v.equals("false") || v.equals("0") || v.equals("no") || v.equals("off"));
     }
@@ -617,21 +707,27 @@ public class StockInsiderBot {
             if (content != null && !content.isBlank()) {
                 for (String line : content.split("\\R")) {
                     String[] parts = line.trim().split("\\t");
-                    if (parts.length == 2) map.put(parts[0].toUpperCase(Locale.ROOT), parts[1]);
+                    if (parts.length == 2)
+                        map.put(parts[0].toUpperCase(Locale.ROOT), parts[1]);
                 }
             }
-        } catch (Exception e) {}
-        if (map.isEmpty()) map.putAll(FALLBACK_TICKER_MAP);
+        } catch (Exception e) {
+        }
+        if (map.isEmpty())
+            map.putAll(FALLBACK_TICKER_MAP);
         return map;
     }
 
     private static String findCikForTicker(String ticker, Map<String, String> tickerToCik) {
         String clean = ticker.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
-        if (clean.isBlank()) return null;
+        if (clean.isBlank())
+            return null;
         for (Map.Entry<String, String> e : tickerToCik.entrySet())
-            if (e.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "").equals(clean)) return e.getValue();
+            if (e.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "").equals(clean))
+                return e.getValue();
         for (Map.Entry<String, String> e : FALLBACK_TICKER_MAP.entrySet())
-            if (e.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "").equals(clean)) return e.getValue();
+            if (e.getKey().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "").equals(clean))
+                return e.getValue();
         return null;
     }
 
@@ -647,12 +743,16 @@ public class StockInsiderBot {
                 String idx = downloadText(url);
                 if (idx != null && !idx.isBlank()) {
                     content.append(idx);
-                    if (found == null) found = date;
+                    if (found == null)
+                        found = date;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
             date = date.minusDays(1);
         }
-        return content.length() > 0 && found != null ? new MasterIndex(found.format(DateTimeFormatter.ofPattern("yyyyMMdd")), content.toString()) : null;
+        return content.length() > 0 && found != null
+                ? new MasterIndex(found.format(DateTimeFormatter.ofPattern("yyyyMMdd")), content.toString())
+                : null;
     }
 
     private static String downloadText(String url) throws Exception {
@@ -674,7 +774,8 @@ public class StockInsiderBot {
                 }
             } catch (Exception e) {
                 lastEx = e;
-                if (i < 2) Thread.sleep(1000);
+                if (i < 2)
+                    Thread.sleep(1000);
             }
         }
         throw lastEx != null ? lastEx : new Exception("Failed to download " + url);
@@ -683,9 +784,11 @@ public class StockInsiderBot {
     private static List<String> parseMasterIdx(String content, Set<String> ciks) {
         Set<String> urls = new LinkedHashSet<>();
         for (String line : content.split("\\R")) {
-            if (line.isBlank() || line.startsWith("CIK|") || line.startsWith("-----")) continue;
+            if (line.isBlank() || line.startsWith("CIK|") || line.startsWith("-----"))
+                continue;
             String[] parts = line.split("\\|", 6);
-            if (parts.length < 5) continue;
+            if (parts.length < 5)
+                continue;
             String cik = parts[0].trim().replaceFirst("^0+(?!$)", "");
             if (ciks.contains(cik) && parts[2].trim().startsWith("4")) {
                 urls.add(SEC_BASE + parts[4].trim());
@@ -700,8 +803,10 @@ public class StockInsiderBot {
             try {
                 String atom = downloadText("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK="
                         + cik + "&type=4&owner=include&count=100&output=atom");
-                if (atom != null) urls.addAll(parseBrowseEdgarAtom(atom, maxDays));
-            } catch (Exception e) {}
+                if (atom != null)
+                    urls.addAll(parseBrowseEdgarAtom(atom, maxDays));
+            } catch (Exception e) {
+            }
         }
         return new ArrayList<>(urls);
     }
@@ -722,9 +827,11 @@ public class StockInsiderBot {
                     LocalDate d = LocalDate.parse(dm.group(1).trim());
                     if (!d.isBefore(threshold)) {
                         String xmlUrl = findForm4XmlUrlFromIndexPage(hm.group(1).trim());
-                        if (xmlUrl != null) urls.add(xmlUrl);
+                        if (xmlUrl != null)
+                            urls.add(xmlUrl);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
         }
         return new ArrayList<>(urls);
@@ -738,24 +845,31 @@ public class StockInsiderBot {
             while (m.find()) {
                 String rel = m.group(1);
                 String full = rel.startsWith("http") ? rel : "https://www.sec.gov" + rel;
-                if (!rel.toLowerCase().contains("xslf345")) return full;
-                if (best == null) best = full;
+                if (!rel.toLowerCase().contains("xslf345"))
+                    return full;
+                if (best == null)
+                    best = full;
             }
             return best;
-        } catch (Exception e) { return null; }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String extractXmlPayload(String raw) {
-        if (raw == null) return "";
+        if (raw == null)
+            return "";
         String clean = "";
         int start = raw.indexOf("<XML>");
         if (start >= 0) {
             int end = raw.indexOf("</XML>", start);
-            if (end > start) clean = raw.substring(start + 5, end);
+            if (end > start)
+                clean = raw.substring(start + 5, end);
         }
         if (clean.isBlank()) {
             Matcher m = Pattern.compile("<ownershipDocument[^>]*>.*?</ownershipDocument>", Pattern.DOTALL).matcher(raw);
-            if (m.find()) clean = m.group();
+            if (m.find())
+                clean = m.group();
         }
         clean = clean.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "")
                 .replaceAll("&(?!(amp|apos|quot|lt|gt|#\\d+);)", "&amp;")
@@ -766,25 +880,30 @@ public class StockInsiderBot {
 
     private static boolean sendNotification(String msg) {
         String discord = System.getenv("DISCORD_WEBHOOK_URL");
-        if (discord == null || discord.isBlank()) return false;
+        if (discord == null || discord.isBlank())
+            return false;
         return sendDiscordWebhook(discord, "Insider Alert", msg);
     }
 
     private static void sendErrorNotification(String err) {
         String discord = System.getenv("DISCORD_WEBHOOK_URL");
-        if (discord != null && !discord.isBlank()) sendDiscordWebhook(discord, "Insider Bot Error", err);
+        if (discord != null && !discord.isBlank())
+            sendDiscordWebhook(discord, "Insider Bot Error", err);
     }
 
     private static boolean sendDiscordWebhook(String url, String title, String msg) {
         try {
             return sendDiscordMessages(url, title, msg);
-        } catch (Exception e) { return false; }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static boolean sendDiscordMessages(String url, String title, String msg) throws Exception {
         String full = "**" + title + "**\n" + msg;
         String escaped = escapeJson(full);
-        if (escaped.length() <= 2000) return sendSingle(url, full);
+        if (escaped.length() <= 2000)
+            return sendSingle(url, full);
         String[] lines = full.split("\n", -1);
         StringBuilder chunk = new StringBuilder();
         boolean ok = true;
@@ -792,13 +911,15 @@ public class StockInsiderBot {
             String line = lines[i] + (i < lines.length - 1 ? "\n" : "");
             if (escapeJson(chunk.toString() + line).length() > 2000) {
                 if (chunk.length() > 0) {
-                    if (!sendSingle(url, chunk.toString())) ok = false;
+                    if (!sendSingle(url, chunk.toString()))
+                        ok = false;
                     chunk.setLength(0);
                 }
             }
             chunk.append(line);
         }
-        if (chunk.length() > 0 && !sendSingle(url, chunk.toString())) ok = false;
+        if (chunk.length() > 0 && !sendSingle(url, chunk.toString()))
+            ok = false;
         return ok;
     }
 
@@ -814,23 +935,31 @@ public class StockInsiderBot {
                     .build();
             HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
             return resp.statusCode() >= 200 && resp.statusCode() < 300;
-        } catch (Exception e) { return false; }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static String escapeJson(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
     }
 
     private static String buildMissingNotification(String[] tickers, String reason) {
         StringBuilder sb = new StringBuilder("🔔 Insider Alerts\n\n");
-        for (String t : tickers) sb.append("▶ ").append(t).append("\n  ").append(reason).append("\n\n");
+        for (String t : tickers)
+            sb.append("▶ ").append(t).append("\n  ").append(reason).append("\n\n");
         return sb.toString().trim();
     }
 
     private static class MasterIndex {
         final String indexDate;
         final String content;
-        MasterIndex(String d, String c) { indexDate = d; content = c; }
+
+        MasterIndex(String d, String c) {
+            indexDate = d;
+            content = c;
+        }
     }
 }
