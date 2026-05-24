@@ -115,7 +115,6 @@ public class StockInsiderBot {
                 return;
             }
 
-            // 收集所有原始交易（未做金额阈值过滤，已过滤 sell-to-cover）
             Map<String, List<AlertEntry>> allRawAlerts = new LinkedHashMap<>();
             Set<String> tickersWithForm4 = new HashSet<>();
             int processedCount = 0;
@@ -142,7 +141,6 @@ public class StockInsiderBot {
                 throw new Exception("Failed to process any of the " + failedCount + " Form 4 filings found.");
             }
 
-            // 按人 + 日期合并，并以总交易额判断阈值
             Map<String, List<AlertEntry>> aggregatedAlerts = aggregateAlerts(allRawAlerts, minimumUsd);
 
             Map<String, List<AlertEntry>> filteredAlerts = new LinkedHashMap<>();
@@ -283,60 +281,61 @@ public class StockInsiderBot {
         return result;
     }
 
+    // ---------- 通知构建 ----------
     private static String buildGroupedNotification(Map<String, List<AlertEntry>> alertsByTicker, String indexDate) {
-    StringBuilder msg = new StringBuilder();
-    msg.append("🔔 **Insider Alerts** (").append(indexDate).append(")\n\n");
+        StringBuilder msg = new StringBuilder();
+        msg.append("🔔 **Insider Alerts** (").append(indexDate).append(")\n\n");
 
-    for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
-        String ticker = entry.getKey();
-        msg.append("▸ **").append(ticker).append("**\n");
-        for (AlertEntry e : entry.getValue()) {
-            String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
-            String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
-            double totalHoldingValue = e.sharesOwnedAfter > 0 ? e.sharesOwnedAfter * e.price : 0;
-            String holdingValueStr = totalHoldingValue > 0 ? formatAmount(totalHoldingValue) : "N/A";
+        for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
+            String ticker = entry.getKey();
+            msg.append("▸ **").append(ticker).append("**\n");
+            for (AlertEntry e : entry.getValue()) {
+                String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
+                String positionStr = e.sharesOwnedAfter > 0 ? formatNumber(e.sharesOwnedAfter) : "N/A";
+                double totalHoldingValue = e.sharesOwnedAfter > 0 ? e.sharesOwnedAfter * e.price : 0;
+                String holdingValueStr = totalHoldingValue > 0 ? formatAmount(totalHoldingValue) : "N/A";
 
-            long beforeShares = e.sharesOwnedAfter - e.netShares;
-            String pctStr = "";
-            if (beforeShares > 0) {
-                double pct = Math.abs(e.netShares) * 100.0 / beforeShares;
-                if (pct > 0) pctStr = String.format(" (%.1f%%)", pct);
+                long beforeShares = e.sharesOwnedAfter - e.netShares;
+                String pctStr = "";
+                if (beforeShares > 0) {
+                    double pct = Math.abs(e.netShares) * 100.0 / beforeShares;
+                    if (pct > 0) pctStr = String.format(" (%.1f%%)", pct);
+                }
+
+                String netDir = e.netAmount > 0 ? "🟢 净买入" : (e.netAmount < 0 ? "🔴 净卖出" : "⚪ 持平");
+                String netAmountStr = formatAmount(Math.abs(e.netAmount));
+                String netSharesStr = formatNumber(Math.abs(e.netShares));
+                // 计划交易加 📋，标题行一眼可辨
+                String planLabel = e.is10b51 ? " 📋" : "";
+
+                String line = String.format(
+                        "%s %s | %s%s\n" +
+                        "  📅 %s  👤 %s  💼 %s\n" +
+                        "  总交易额 %s | %s %s (%s股)%s\n" +
+                        "  持仓 %s  (≈%s)",
+                        netDir, e.ownerName, ticker, planLabel,
+                        date, e.ownerName, e.position,
+                        formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr,
+                        positionStr, holdingValueStr);
+
+                if (e.buyAmount > 0 && e.sellAmount > 0) {
+                    line += "\n  买入 " + formatAmount(e.buyAmount) + "(" + formatNumber(e.buyShares) + "股)  |  卖出 " +
+                            formatAmount(e.sellAmount) + "(" + formatNumber(e.sellShares) + "股)";
+                }
+
+                // 计划交易灰白（无前缀），主动买入绿，主动卖出红
+                if (e.is10b51) {
+                    msg.append("```diff\n  ").append(line).append("\n```\n");
+                } else if ("BUY".equals(e.type)) {
+                    msg.append("```diff\n+ ").append(line).append("\n```\n");
+                } else {
+                    msg.append("```diff\n- ").append(line).append("\n```\n");
+                }
+                msg.append("\n");
             }
-
-            String netDir = e.netAmount > 0 ? "🟢 净买入" : (e.netAmount < 0 ? "🔴 净卖出" : "⚪ 持平");
-            String netAmountStr = formatAmount(Math.abs(e.netAmount));
-            String netSharesStr = formatNumber(Math.abs(e.netShares));
-            // 计划交易加 📋，标题行一眼可辨
-            String planLabel = e.is10b51 ? " 📋" : "";
-
-            String line = String.format(
-                    "%s %s | %s%s\n" +
-                    "  📅 %s  👤 %s  💼 %s\n" +
-                    "  总交易额 %s | %s %s (%s股)%s\n" +
-                    "  持仓 %s  (≈%s)",
-                    netDir, e.ownerName, ticker, planLabel,
-                    date, e.ownerName, e.position,
-                    formatAmount(e.amount), netDir, netAmountStr, netSharesStr, pctStr,
-                    positionStr, holdingValueStr);
-
-            if (e.buyAmount > 0 && e.sellAmount > 0) {
-                line += "\n  买入 " + formatAmount(e.buyAmount) + "(" + formatNumber(e.buyShares) + "股)  |  卖出 " +
-                        formatAmount(e.sellAmount) + "(" + formatNumber(e.sellShares) + "股)";
-            }
-
-            // 计划交易用无前缀（灰白），主动交易保留 +/- 绿红
-            if (e.is10b51) {
-                msg.append("```diff\n  ").append(line).append("\n```\n");
-            } else if ("BUY".equals(e.type)) {
-                msg.append("```diff\n+ ").append(line).append("\n```\n");
-            } else {
-                msg.append("```diff\n- ").append(line).append("\n```\n");
-            }
-            msg.append("\n");
         }
+        return msg.toString().trim();
     }
-    return msg.toString().trim();
-}
 
     // ---------- Form 4 解析 ----------
     private static Map<String, List<AlertEntry>> parseForm4(String xml,
@@ -434,13 +433,11 @@ public class StockInsiderBot {
 
     // ---------- Sell-to-cover 检测 ----------
     private static boolean isSellToCover(JsonNode transaction, JsonNode docRoot) {
-        // 内联文本检查
         String[] paths = {"footnote", "footnotes", "remarks", "transactionText", "explanatoryText"};
         for (String p : paths) {
             if (containsSellToCoverText(extractText(transaction, p, ""))) return true;
         }
 
-        // 收集本 transaction 引用的所有 footnoteId
         Set<String> referencedIds = new HashSet<>();
         collectFootnoteIds(transaction, referencedIds);
         logDebug("footnoteIds in tx: " + referencedIds);
@@ -452,8 +449,7 @@ public class StockInsiderBot {
                 Iterable<JsonNode> fnList = fnNode.isArray() ? fnNode : Collections.singletonList(fnNode);
                 for (JsonNode fn : fnList) {
                     String id = fn.path("id").asText(fn.path("_id").asText(""));
-                    // FIX: XmlMapper 把带属性的文本节点内容存在空字符串键 "" 下
-                    // fn.asText() 对 ObjectNode 永远返回 ""，必须用 fn.path("").asText()
+                    // XmlMapper 把带属性的文本节点内容存在空字符串键 "" 下
                     String text = fn.path("").asText(fn.asText(""));
                     logDebug("Checking footnote " + id + " [" + text.substring(0, Math.min(80, text.length())) + "]");
                     if (referencedIds.contains(id) && containsSellToCoverText(text)) return true;
@@ -472,7 +468,6 @@ public class StockInsiderBot {
                 || (t.contains("rsu") && (t.contains("tax") || t.contains("vest")));
     }
 
-    // 递归收集 transaction 内所有 <footnoteId id="Fx"/> 引用
     private static void collectFootnoteIds(JsonNode node, Set<String> ids) {
         if (node == null || node.isMissingNode()) return;
         if (node.isObject()) {
@@ -488,13 +483,26 @@ public class StockInsiderBot {
     }
 
     // ---------- 辅助方法 ----------
+
+    /**
+     * 兼容三种 XmlMapper 序列化形式：
+     *   "true" / "false"（字符串）
+     *   "1" / "0"（字符串）
+     *   ObjectNode { "value": "1" }（带子节点）
+     */
+    private static boolean isTruthy(JsonNode node) {
+        if (node == null || node.isMissingNode()) return false;
+        String direct = node.asText("");
+        if ("true".equalsIgnoreCase(direct) || "1".equals(direct)) return true;
+        // XmlMapper 有时把 <isDirector>1</isDirector> 解析成 ObjectNode{value:"1"}
+        String val = node.path("value").asText("");
+        return "true".equalsIgnoreCase(val) || "1".equals(val);
+    }
+
     private static boolean isOfficerOrDirector(JsonNode reportingOwner) {
         JsonNode rel = reportingOwner.path("reportingOwnerRelationship");
         if (rel.isMissingNode()) return false;
-        return "true".equalsIgnoreCase(rel.path("isDirector").asText()) ||
-                "1".equals(rel.path("isDirector").asText()) ||
-                "true".equalsIgnoreCase(rel.path("isOfficer").asText()) ||
-                "1".equals(rel.path("isOfficer").asText());
+        return isTruthy(rel.path("isDirector")) || isTruthy(rel.path("isOfficer"));
     }
 
     private static String extractPosition(JsonNode reportingOwner) {
@@ -798,10 +806,8 @@ public class StockInsiderBot {
         String header = "**" + title + "**\n";
         String full = header + msg;
 
-        // 单条消息直接发
         if (escapeJson(full).length() <= 1990) return sendSingle(url, full);
 
-        // 按完整 diff 块拆分
         List<String> blocks = splitIntoBlocks(msg);
         StringBuilder chunk = new StringBuilder(header);
         boolean ok = true;
@@ -820,8 +826,7 @@ public class StockInsiderBot {
     }
 
     /**
-     * 把通知文本按完整的 ```diff...``` 块拆分，块间的普通文本（header、ticker 行等）单独作为一个元素。
-     * 保证每个 diff 代码块作为原子单位，不被跨消息截断。
+     * 把通知文本按完整的 ```diff...``` 块拆分，保证每块不被跨消息截断。
      */
     private static List<String> splitIntoBlocks(String msg) {
         List<String> blocks = new ArrayList<>();
@@ -834,7 +839,6 @@ public class StockInsiderBot {
                 if (!text.isEmpty()) blocks.add(text);
             }
             String block = m.group();
-            // 单个块超长时降级为纯文本，避免永远无法发送
             if (escapeJson(block).length() > 1990)
                 block = block.replaceAll("```diff\\n[+\\- ]?", "").replace("```", "").strip();
             blocks.add(block);
