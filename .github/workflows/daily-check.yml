@@ -1,0 +1,56 @@
+name: Daily Insider Check
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Comma-separated tickers (leave blank to use secret)"
+        required: false
+        default: ""       
+      threshold:
+        description: "Minimum trade size in USD (leave blank to use secret)"
+        required: false
+        default: ""
+      lookback:
+        description: "Days to look back (leave blank to use secret)"
+        required: false
+        default: ""
+
+env:
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+  DING_WEBHOOK_URL: ${{ secrets.DING_WEBHOOK_URL }}
+  DING_WEBHOOK_SIGN: ${{ secrets.DING_WEBHOOK_SIGN }}
+  SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+  SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
+
+  TICKERS: ${{ github.event.inputs.tickers || secrets.TICKERS }}
+  THRESHOLD_USD: ${{ github.event.inputs.threshold || secrets.THRESHOLD }}
+  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || secrets.LOOKBACK }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: "maven"
+
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Run bot
+        run: |
+          mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }}"
