@@ -420,6 +420,33 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
         return alerts;
     }
 
+    private static boolean detectPlanTrade(JsonNode transaction, JsonNode docRoot) {
+    // 收集 transactionCoding 上挂的 footnoteId（可能单条或数组）
+    JsonNode fnRef = transaction.path("transactionCoding").path("footnoteId");
+    Set<String> ids = new HashSet<>();
+    if (fnRef.isArray()) {
+        for (JsonNode n : fnRef) {
+            String id = n.path("id").asText(n.path("_id").asText(""));
+            if (!id.isBlank()) ids.add(id);
+        }
+    } else if (!fnRef.isMissingNode()) {
+        String id = fnRef.path("id").asText(fnRef.path("_id").asText(""));
+        if (!id.isBlank()) ids.add(id);
+    }
+    if (ids.isEmpty() || docRoot == null) return false;
+
+    JsonNode footnotesNode = docRoot.path("footnotes");
+    if (footnotesNode.isMissingNode()) return false;
+    JsonNode fnNode = footnotesNode.path("footnote");
+    Iterable<JsonNode> list = fnNode.isArray() ? fnNode : Collections.singletonList(fnNode);
+    for (JsonNode fn : list) {
+        String id = fn.path("id").asText(fn.path("_id").asText(""));
+        if (!ids.contains(id)) continue;
+        String text = fn.path("").asText(fn.asText("")).toLowerCase(Locale.ROOT);
+        if (text.contains("10b5-1") || text.contains("rule 10b5")) return true;
+    }
+    return false;
+}
     private static AlertEntry processTransaction(JsonNode transaction, String ownerName, String position,
             JsonNode docRoot) {
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
@@ -441,8 +468,7 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
         JsonNode planNode = transaction.path("transactionCoding").path("is10b5-1Transaction");
         String planText = planNode.isMissingNode() ? ""
                 : (planNode.isObject() ? planNode.path("value").asText("") : planNode.asText(""));
-        boolean isPlan = "true".equalsIgnoreCase(planText) || "1".equals(planText);
-
+        boolean isPlan = detectPlanTrade(transaction, docRoot);
         String transactionDate = extractText(transaction, "transactionDate", "");
         if (!transactionDate.isEmpty() && transactionDate.length() >= 10)
             transactionDate = transactionDate.substring(0, 10);
