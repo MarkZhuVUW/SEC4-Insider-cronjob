@@ -281,7 +281,7 @@ public class StockInsiderBot {
         return result;
     }
 
-   // ---------- 通知构建 ----------
+// ---------- 通知构建 ----------
 private static String buildGroupedNotification(Map<String, List<AlertEntry>> alertsByTicker, String indexDate) {
     StringBuilder msg = new StringBuilder();
     String today = LocalDate.now(ZoneId.of("Pacific/Auckland"))
@@ -289,6 +289,8 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
     msg.append("🔔 **Insider Alerts** · ").append(today).append("\n");
 
     for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
+        String ticker = entry.getKey();
+        for (AlertEntry e : entry.getValue()) {
             String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
             String plan = e.is10b51 ? " 📋" : "";
             String position = (e.position == null || e.position.isBlank()
@@ -341,9 +343,9 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
 
             // 颜色前缀: 主动买=绿(+) / 主动卖=红(-) / 10b5-1=灰(空格)
             String p;
-            if (e.is10b51)               p = " ";
+            if (e.is10b51)                 p = " ";
             else if ("BUY".equals(e.type)) p = "+";
-            else                          p = "-";
+            else                           p = "-";
 
             msg.append("```diff\n");
             msg.append(p).append(' ').append(ticker)
