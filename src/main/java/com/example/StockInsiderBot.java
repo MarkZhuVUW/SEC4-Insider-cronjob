@@ -297,7 +297,7 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
                             ? e.transactionDate.substring(5)
                             : e.transactionDate);
 
-            String plan = e.is10b51 ? " 📋" : "";
+            String plan = e.is10b51 ? " [计划]" : "";
             String position = (e.position == null || e.position.isBlank()
                     || "Unknown Position".equals(e.position)) ? "" : "·" + e.position;
 
@@ -436,9 +436,10 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
 
         double amount = shares * price;
         String type = "P".equals(code) ? "BUY" : "SELL";
-        boolean isPlan = "true".equalsIgnoreCase(
-                transaction.path("transactionCoding").path("is10b51Transaction").asText())
-                || "1".equals(transaction.path("transactionCoding").path("is10b51Transaction").asText());
+        JsonNode planNode = transaction.path("transactionCoding").path("is10b5-1Transaction");
+        String planText = planNode.isMissingNode() ? ""
+                : (planNode.isObject() ? planNode.path("value").asText("") : planNode.asText(""));
+        boolean isPlan = "true".equalsIgnoreCase(planText) || "1".equals(planText);
 
         String transactionDate = extractText(transaction, "transactionDate", "");
         if (!transactionDate.isEmpty() && transactionDate.length() >= 10)
