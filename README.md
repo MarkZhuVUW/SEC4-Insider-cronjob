@@ -1,48 +1,54 @@
 # SEC4-Insider-cronjob
 
-A simple Java bot that runs on GitHub Actions to check for large insider transactions (>500k USD) for specified US stock tickers.
+A Java bot that runs on GitHub Actions to check for large insider transactions (>500k USD by default) for specified US stock tickers, and posts grouped alerts to Discord.
 
 ## Features
+
 <img width="1206" height="2622" alt="124c8c6a6c8b33514828527908d2c2d4" src="https://github.com/user-attachments/assets/07e4b9ec-45d8-4c35-ae86-306cd23f52ad" />
 
-- Checks SEC Form 4 filings for the previous day
-- Filters for purchase (P) and sale (S) transactions over $500,000
-- Sends push notifications via Discord webhook when alerts are found
-- Runs daily at 9 AM UTC or manually via workflow dispatch
+- Checks SEC Form 4 filings within a configurable lookback window
+- Filters non-derivative purchase (P) and sale (S) transactions over a configurable threshold
+- Excludes awards (A) and option exercises (M) to avoid RSU-related noise
+- Sends grouped, color-coded notifications via Discord webhook
+- Runs **twice daily** on schedule (04:00 and 16:00 Auckland time), or manually via workflow dispatch
+- **Optional in-UI secret update**: edit `TICKERS` / `THRESHOLD` / `LOOKBACK` directly from the "Run workflow" button without leaving the Actions tab
 
 ## Setup
 
 1. Fork this repository.
 2. Create a Discord webhook:
-   - Open your Discord server and go to `Server Settings` → `Integrations` → `Webhooks`.
-   - Click `New Webhook` and select a channel where you want alerts to appear.
-   - Copy the webhook URL.
-3. Add the webhook URL to a new secret named `DISCORD_WEBHOOK_URL`
-   - Open your fork on GitHub and go to `Settings` → `Secrets and variables` → `Actions`.
-4. Setup tickers, threshold and lookback days in secrets  
-   - Add a new secret named `TICKERS`.
-   - Add a new secret named `THRESHOLD`.
-   - Add a new secret named `LOOKBACK`.
-5. Run the workflow manually or wait for the daily schedule:
-   - Go to the `Actions` tab, choose `Daily Insider Check`, then `Run workflow`.
-   - Enter tickers, threshold, and lookback values as needed.
+   - In Discord: `Server Settings` → `Integrations` → `Webhooks` → `New Webhook`.
+   - Pick the channel for alerts and copy the webhook URL.
+3. Add repository secrets under `Settings` → `Secrets and variables` → `Actions`:
+   - `DISCORD_WEBHOOK_URL` — your Discord webhook URL.
+   - `TICKERS` — comma-separated tickers, e.g. `AAPL,MSFT,NVDA`.
+   - `THRESHOLD` — USD threshold, e.g. `500000`.
+   - `LOOKBACK` — number of days to look back, e.g. `1`.
+   - `PAT` — a **Personal Access Token** with `repo` scope (Fine-grained: `Secrets: read & write` on this repository). Required only if you want to update the three secrets above from the workflow UI.
 
 ## Usage
 
-- **Manual run**: Go to Actions tab, select "Daily Insider Check", click "Run workflow", enter your desired tickers, threshold, and lookback days. Defaults are provided.
-- **Scheduled**: Runs daily automatically using default values in `./.github/workflows/daily-check.yml`. You need to customise tickers, threshold and lookback to your preferences.
-- **Configuration**: 
-  - **GitHub secret**: Set `DISCORD_WEBHOOK_URL` in Settings → Secrets and variables → Actions
-  - **Ticker format**: `BRKB` or `BRK-B` are supported; `BRK.B` is not supported. Ticker input is case-insensitive.
+### Scheduled runs
 
-- Push notifications include ticker, owner, position, action, security, shares, price, and amount on separate lines.
-![alt text](image.png)
-## Requirements
+Runs automatically at **04:00 and 16:00 NZST** (Auckland time) every day, using the values in `TICKERS`, `THRESHOLD`, and `LOOKBACK` secrets.
 
-- GitHub Actions
+### Manual run
 
-## Notes
+Go to the `Actions` tab → `Daily Insider Check` → `Run workflow`. You'll see four inputs:
 
-- Only checks non-derivative transactions (P/S codes)
-- Excludes awards (A) and exercises (M) to avoid RSU-related transactions
-- Data from SEC EDGAR, subject to their terms
+| Input | Purpose |
+|---|---|
+| `update_secrets` (checkbox) | If **checked**, the workflow first overwrites the `TICKERS` / `THRESHOLD` / `LOOKBACK` secrets with whatever you typed below (blank fields keep their existing secret value), then runs the check using the new values. If **unchecked**, secrets are not modified — any value you type is used **only for this one run**. |
+| `tickers` | Tickers to check (comma-separated). |
+| `threshold` | USD threshold for this run or for the new secret value. |
+| `lookback` | Lookback days for this run or for the new secret value. |
+
+Secret update only proceeds if `PAT` is set. The main check job runs only after the secret-update step succeeds (or is skipped), so a partial update never leaves you in a broken state.
+
+### Ticker format
+
+`BRKB` or `BRK-B` are supported; `BRK.B` is not. Input is case-insensitive.
+
+## Notification format
+
+Each Discord alert begins with a header showing the run date (local Auckland date), followed by one color-coded `diff` block per ticker:
