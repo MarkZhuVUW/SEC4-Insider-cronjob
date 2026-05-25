@@ -23,10 +23,7 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
    - Add a new secret named `TICKERS`.
    - Add a new secret named `THRESHOLD`.
    - Add a new secret named `LOOKBACK`.
-5. 钉钉通知（可选）：在 Settings → Secrets and variables → Actions 中设置
-   - `DING_WEBHOOK_URL`：钉钉机器人 Webhook 地址
-   - `DING_WEBHOOK_SIGN`：钉钉机器人加签密钥
-6. Run the workflow manually or wait for the daily schedule:
+5. Run the workflow manually or wait for the daily schedule:
    - Go to the `Actions` tab, choose `Daily Insider Check`, then `Run workflow`.
    - Enter tickers, threshold, and lookback values as needed.
 
@@ -36,7 +33,6 @@ A simple Java bot that runs on GitHub Actions to check for large insider transac
 - **Scheduled**: Runs daily automatically using default values in `./.github/workflows/daily-check.yml`. You need to customise tickers, threshold and lookback to your preferences.
 - **Configuration**: 
   - **GitHub secret**: Set `DISCORD_WEBHOOK_URL` in Settings → Secrets and variables → Actions
-  - **钉钉通知（可选）**：在 Settings → Secrets and variables → Actions 中设置 `DING_WEBHOOK_URL`：钉钉机器人 Webhook 地址 `DING_WEBHOOK_SIGN`：钉钉机器人加签密钥
   - **Ticker format**: `BRKB` or `BRK-B` are supported; `BRK.B` is not supported. Ticker input is case-insensitive.
 
 - Push notifications include ticker, owner, position, action, security, shares, price, and amount on separate lines.
