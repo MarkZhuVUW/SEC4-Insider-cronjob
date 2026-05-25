@@ -120,19 +120,23 @@ jobs:
       - name: Resolve effective parameters
         id: params
         env:
+          GH_TOKEN:        ${{ secrets.PAT || github.token }}
           EVENT_NAME:      ${{ github.event_name }}
           UPDATE_VARS:     ${{ inputs.update_vars }}
           INPUT_TICKERS:   ${{ inputs.tickers }}
           INPUT_THRESHOLD: ${{ inputs.threshold }}
           INPUT_LOOKBACK:  ${{ inputs.lookback }}
-          VAR_TICKERS:     ${{ vars.TICKERS }}
-          VAR_THRESHOLD:   ${{ vars.THRESHOLD }}
-          VAR_LOOKBACK:    ${{ vars.LOOKBACK }}
         run: |
-          # Rule:
-          #   - schedule run             → use repo variables
-          #   - dispatch + update_vars   → variables were just refreshed, use them
-          #   - dispatch + no update     → input wins; blank input falls back to variable
+          # vars.* context is snapshotted at workflow start, so re-fetch live
+          # values from the API to see updates that the previous job made.
+          fetch_var() {
+            gh api "/repos/$GITHUB_REPOSITORY/actions/variables/$1" \
+              --jq '.value' 2>/dev/null || true
+          }
+          VAR_TICKERS="$(fetch_var TICKERS)"
+          VAR_THRESHOLD="$(fetch_var THRESHOLD)"
+          VAR_LOOKBACK="$(fetch_var LOOKBACK)"
+
           if [ "$EVENT_NAME" = "schedule" ] || [ "$UPDATE_VARS" = "true" ]; then
             T="$VAR_TICKERS"; H="$VAR_THRESHOLD"; L="$VAR_LOOKBACK"
           else
@@ -144,7 +148,6 @@ jobs:
           echo "threshold=$H" >> "$GITHUB_OUTPUT"
           echo "lookback=$L"  >> "$GITHUB_OUTPUT"
           echo "Effective config: tickers=$T threshold=$H lookback=$L"
-
       - name: Build
         run: mvn -B -ntp package -DskipTests
 
