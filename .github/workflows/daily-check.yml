@@ -15,9 +15,10 @@
 # Manual run:
 #   - update_vars unchecked  → values you type are used ONLY for this run.
 #                              Blank inputs fall back to the saved variable.
-#   - update_vars checked    → saved variables are overwritten with your inputs
-#                              (blank input keeps the existing variable value),
-#                              then the check runs with the new values.
+#   - update_vars checked    → only the inputs you filled overwrite their
+#                              variables. Blank inputs keep their existing
+#                              variable value. The check then runs using the
+#                              effective (post-update) variable values.
 #                              Requires PAT secret.
 
 name: Daily Insider Check
@@ -29,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       update_vars:
-        description: 'Save inputs as repository variables before running (requires PAT). If unchecked, inputs are used for this run only.'
+        description: 'Save filled inputs as repository variables before running (requires PAT). Blank inputs keep existing variable values. If unchecked, inputs are used for this run only.'
         type: boolean
         default: false
       tickers:
@@ -52,6 +53,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 1: optionally update repository variables. Skipped on schedule, and
   # skipped on manual dispatch when update_vars=false.
+  # Each step is gated by `if: inputs.X != ''` so blank inputs never overwrite.
   # ---------------------------------------------------------------------------
   update-vars:
     if: github.event_name == 'workflow_dispatch' && inputs.update_vars == true
@@ -68,21 +70,27 @@ jobs:
 
       - name: Update TICKERS variable
         if: inputs.tickers != ''
+        env:
+          NEW_VALUE: ${{ inputs.tickers }}
         run: |
           echo "Updating TICKERS variable"
-          printf '%s' "${{ inputs.tickers }}" | gh variable set TICKERS --repo "$GITHUB_REPOSITORY" --body -
+          printf '%s' "$NEW_VALUE" | gh variable set TICKERS --repo "$GITHUB_REPOSITORY"
 
       - name: Update THRESHOLD variable
         if: inputs.threshold != ''
+        env:
+          NEW_VALUE: ${{ inputs.threshold }}
         run: |
           echo "Updating THRESHOLD variable"
-          printf '%s' "${{ inputs.threshold }}" | gh variable set THRESHOLD --repo "$GITHUB_REPOSITORY" --body -
+          printf '%s' "$NEW_VALUE" | gh variable set THRESHOLD --repo "$GITHUB_REPOSITORY"
 
       - name: Update LOOKBACK variable
         if: inputs.lookback != ''
+        env:
+          NEW_VALUE: ${{ inputs.lookback }}
         run: |
           echo "Updating LOOKBACK variable"
-          printf '%s' "${{ inputs.lookback }}" | gh variable set LOOKBACK --repo "$GITHUB_REPOSITORY" --body -
+          printf '%s' "$NEW_VALUE" | gh variable set LOOKBACK --repo "$GITHUB_REPOSITORY"
 
       - name: Summary
         run: echo "Variable update step complete."
@@ -112,19 +120,19 @@ jobs:
       - name: Resolve effective parameters
         id: params
         env:
-          EVENT_NAME:        ${{ github.event_name }}
-          UPDATE_VARS:       ${{ inputs.update_vars }}
-          INPUT_TICKERS:     ${{ inputs.tickers }}
-          INPUT_THRESHOLD:   ${{ inputs.threshold }}
-          INPUT_LOOKBACK:    ${{ inputs.lookback }}
-          VAR_TICKERS:       ${{ vars.TICKERS }}
-          VAR_THRESHOLD:     ${{ vars.THRESHOLD }}
-          VAR_LOOKBACK:      ${{ vars.LOOKBACK }}
+          EVENT_NAME:      ${{ github.event_name }}
+          UPDATE_VARS:     ${{ inputs.update_vars }}
+          INPUT_TICKERS:   ${{ inputs.tickers }}
+          INPUT_THRESHOLD: ${{ inputs.threshold }}
+          INPUT_LOOKBACK:  ${{ inputs.lookback }}
+          VAR_TICKERS:     ${{ vars.TICKERS }}
+          VAR_THRESHOLD:   ${{ vars.THRESHOLD }}
+          VAR_LOOKBACK:    ${{ vars.LOOKBACK }}
         run: |
           # Rule:
-          #   - schedule run            → always use repo variables
-          #   - dispatch + update_vars  → variables were just rewritten, use them
-          #   - dispatch + no update    → input wins; blank input falls back to variable
+          #   - schedule run             → use repo variables
+          #   - dispatch + update_vars   → variables were just refreshed, use them
+          #   - dispatch + no update     → input wins; blank input falls back to variable
           if [ "$EVENT_NAME" = "schedule" ] || [ "$UPDATE_VARS" = "true" ]; then
             T="$VAR_TICKERS"; H="$VAR_THRESHOLD"; L="$VAR_LOOKBACK"
           else
