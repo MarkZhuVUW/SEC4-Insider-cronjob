@@ -11,7 +11,7 @@ A Java bot that runs on GitHub Actions to check for large insider transactions (
 - Excludes awards (A) and option exercises (M) to avoid RSU-related noise
 - Sends grouped, color-coded notifications via Discord webhook
 - Runs **twice daily** on schedule (04:00 and 16:00 Auckland time), or manually via workflow dispatch
-- **Optional in-UI secret update**: edit `TICKERS` / `THRESHOLD` / `LOOKBACK` directly from the "Run workflow" button without leaving the Actions tab
+- edit and save `TICKERS` / `THRESHOLD` / `LOOKBACK` directly from the "Run workflow" button
 
 ## Setup
 
@@ -21,16 +21,13 @@ A Java bot that runs on GitHub Actions to check for large insider transactions (
    - Pick the channel for alerts and copy the webhook URL.
 3. Add repository secrets under `Settings` → `Secrets and variables` → `Actions`:
    - `DISCORD_WEBHOOK_URL` — your Discord webhook URL.
-   - `TICKERS` — comma-separated tickers, e.g. `AAPL,MSFT,NVDA`.
-   - `THRESHOLD` — USD threshold, e.g. `500000`.
-   - `LOOKBACK` — number of days to look back, e.g. `1`.
    - `PAT` — a **Personal Access Token** with `repo` scope (Fine-grained: `Secrets: read & write` on this repository). Required only if you want to update the three secrets above from the workflow UI.
 
 ## Usage
 
 ### Scheduled runs
 
-Runs automatically at **04:00 and 16:00 NZST** (Auckland time) every day, using the values in `TICKERS`, `THRESHOLD`, and `LOOKBACK` secrets.
+Runs automatically at **04:00 and 16:00 NZST** (Auckland time) every day, using the values in `TICKERS`, `THRESHOLD`, and `LOOKBACK` variables.
 
 ### Manual run
 
