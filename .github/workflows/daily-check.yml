@@ -1,37 +1,111 @@
+# =============================================================================
+# Daily Insider Check
+# =============================================================================
+# 🕒 Schedule: runs automatically twice a day at Auckland time 04:00 and 16:00
+#    (NZST = UTC+12, so 04:00 UTC and 16:00 UTC).
+#
+# 🖱️ Manual run (Run workflow button) — how the inputs work:
+#
+#   ▸ "update_secrets" (checkbox)
+#       ☑  TICK IT  → Any of the 3 fields below that you fill in will OVERWRITE
+#                     the corresponding repo secret (TICKERS / THRESHOLD / LOOKBACK).
+#                     Blank fields keep the existing secret value.
+#                     The actual scraping job runs ONLY if the secret update succeeds,
+#                     and it will use the freshly-updated secret values.
+#
+#       ☐  LEAVE UNTICKED → Secrets are NOT modified.
+#                     For each field: if you typed a value, that value is used;
+#                     if you left it blank, the existing secret value is used.
+#
+#   ▸ "tickers"   — comma-separated tickers (e.g. AAPL,MSFT,NVDA)
+#   ▸ "threshold" — minimum trade size in USD
+#   ▸ "lookback"  — number of days to look back
+#
+# 🔐 Requires repo secret `PAT` (a GitHub Personal Access Token with `repo` scope)
+#    in order to update other secrets via the GitHub API.
+# =============================================================================
+
 name: Daily Insider Check
 
 on:
   schedule:
+    # Auckland 04:00 NZST = 16:00 UTC (previous day)
     - cron: "0 16 * * *"
+    # Auckland 16:00 NZST = 04:00 UTC
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
-      tickers:
-        description: "Comma-separated tickers (leave blank to use secret)"
+      update_secrets:
+        description: "Tick to UPDATE secrets with the values below before running. Blank fields keep current secret. Job runs only if update succeeds."
+        type: boolean
         required: false
-        default: ""       
+        default: false
+      tickers:
+        description: "Comma-separated tickers (blank = keep / use existing secret)"
+        required: false
+        default: ""
       threshold:
-        description: "Minimum trade size in USD (leave blank to use secret)"
+        description: "Minimum trade size in USD (blank = keep / use existing secret)"
         required: false
         default: ""
       lookback:
-        description: "Days to look back (leave blank to use secret)"
+        description: "Days to look back (blank = keep / use existing secret)"
         required: false
         default: ""
 
-env:
-  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-  DING_WEBHOOK_URL: ${{ secrets.DING_WEBHOOK_URL }}
-  DING_WEBHOOK_SIGN: ${{ secrets.DING_WEBHOOK_SIGN }}
-  SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-  SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
-
-  TICKERS: ${{ github.event.inputs.tickers || secrets.TICKERS }}
-  THRESHOLD_USD: ${{ github.event.inputs.threshold || secrets.THRESHOLD }}
-  LOOKBACK_DAYS: ${{ github.event.inputs.lookback || secrets.LOOKBACK }}
-
 jobs:
-  check:
+  # ---------------------------------------------------------------------------
+  # Job 1: Update secrets — only when manually triggered with the checkbox on.
+  # If any individual input is blank, that secret is NOT touched.
+  # ---------------------------------------------------------------------------
+  update-secrets:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update_secrets == 'true' }}
     runs-on: ubuntu-latest
+    steps:
+      - name: Update TICKERS secret
+        if: ${{ github.event.inputs.tickers != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          VALUE: ${{ github.event.inputs.tickers }}
+        run: |
+          printf '%s' "$VALUE" | gh secret set TICKERS --repo "$GITHUB_REPOSITORY" --body -
+          echo "✅ TICKERS updated"
+
+      - name: Update THRESHOLD secret
+        if: ${{ github.event.inputs.threshold != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          VALUE: ${{ github.event.inputs.threshold }}
+        run: |
+          printf '%s' "$VALUE" | gh secret set THRESHOLD --repo "$GITHUB_REPOSITORY" --body -
+          echo "✅ THRESHOLD updated"
+
+      - name: Update LOOKBACK secret
+        if: ${{ github.event.inputs.lookback != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          VALUE: ${{ github.event.inputs.lookback }}
+        run: |
+          printf '%s' "$VALUE" | gh secret set LOOKBACK --repo "$GITHUB_REPOSITORY" --body -
+          echo "✅ LOOKBACK updated"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: The actual insider check.
+  # Runs after update-secrets succeeds, OR when update-secrets is skipped
+  # (i.e. manual run without the checkbox, or scheduled run).
+  # ---------------------------------------------------------------------------
+  check:
+    needs: [update-secrets]
+    if: ${{ always() && (needs.update-secrets.result == 'success' || needs.update-secrets.result == 'skipped') }}
+    runs-on: ubuntu-latest
+
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      DING_WEBHOOK_URL: ${{ secrets.DING_WEBHOOK_URL }}
+      DING_WEBHOOK_SIGN: ${{ secrets.DING_WEBHOOK_SIGN }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,6 +125,36 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
+      # Resolve the final parameter values used for this run.
+      # - scheduled run                       → always use secrets
+      # - manual + update_secrets = true      → use secrets (now freshly updated)
+      # - manual + update_secrets = false     → input if provided, else secret
+      - name: Resolve runtime parameters
+        id: params
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          UPDATE_SECRETS: ${{ github.event.inputs.update_secrets }}
+          INPUT_TICKERS: ${{ github.event.inputs.tickers }}
+          INPUT_THRESHOLD: ${{ github.event.inputs.threshold }}
+          INPUT_LOOKBACK: ${{ github.event.inputs.lookback }}
+          SECRET_TICKERS: ${{ secrets.TICKERS }}
+          SECRET_THRESHOLD: ${{ secrets.THRESHOLD }}
+          SECRET_LOOKBACK: ${{ secrets.LOOKBACK }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ] || [ "$UPDATE_SECRETS" = "true" ]; then
+            T="$SECRET_TICKERS"
+            H="$SECRET_THRESHOLD"
+            L="$SECRET_LOOKBACK"
+          else
+            T="${INPUT_TICKERS:-$SECRET_TICKERS}"
+            H="${INPUT_THRESHOLD:-$SECRET_THRESHOLD}"
+            L="${INPUT_LOOKBACK:-$SECRET_LOOKBACK}"
+          fi
+          echo "tickers=$T"   >> "$GITHUB_OUTPUT"
+          echo "threshold=$H" >> "$GITHUB_OUTPUT"
+          echo "lookback=$L"  >> "$GITHUB_OUTPUT"
+          echo "Using tickers=$T threshold=$H lookback=$L"
+
       - name: Run bot
         run: |
-          mvn compile exec:java -Dexec.args="${{ env.TICKERS }} --threshold=${{ env.THRESHOLD_USD }} --lookback=${{ env.LOOKBACK_DAYS }}"
+          mvn compile exec:java -Dexec.args="${{ steps.params.outputs.tickers }} --threshold=${{ steps.params.outputs.threshold }} --lookback=${{ steps.params.outputs.lookback }}"
