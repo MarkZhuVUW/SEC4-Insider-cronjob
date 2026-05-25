@@ -291,10 +291,15 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
     for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
         String ticker = entry.getKey();
         for (AlertEntry e : entry.getValue()) {
-            String date = e.transactionDate.isEmpty() ? "N/A" : e.transactionDate;
+            // 日期：去掉年份，只留 MM-DD
+            String date = e.transactionDate.isEmpty() ? "N/A"
+                    : (e.transactionDate.length() >= 10
+                            ? e.transactionDate.substring(5)
+                            : e.transactionDate);
+
             String plan = e.is10b51 ? " 📋" : "";
             String position = (e.position == null || e.position.isBlank()
-                    || "Unknown Position".equals(e.position)) ? "" : " · " + e.position;
+                    || "Unknown Position".equals(e.position)) ? "" : "·" + e.position;
 
             // 变动百分比 (带正负号)
             long beforeShares = e.sharesOwnedAfter - e.netShares;
@@ -306,16 +311,16 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
                     pctStr = String.format("%+.1f%%", signed);
                 }
             }
-            String pctTail = pctStr.isEmpty() ? "" : "  ·  " + pctStr;
+            String pctTail = pctStr.isEmpty() ? "" : "·" + pctStr;
 
             // 持仓
             String holdingStr;
             if (e.sharesOwnedAfter > 0) {
                 double hv = e.sharesOwnedAfter * e.price;
-                holdingStr = String.format("持仓 %s ≈%s",
+                holdingStr = String.format("持 %s≈%s",
                         formatNumber(e.sharesOwnedAfter), formatAmount(hv));
             } else {
-                holdingStr = "持仓 N/A";
+                holdingStr = "持 N/A";
             }
 
             // 主行 & 可选 buy/sell 明细
@@ -325,37 +330,37 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
 
             if (isMixed) {
                 String dirEmoji = e.netAmount > 0 ? "🟢" : (e.netAmount < 0 ? "🔴" : "⚪");
-                String dirText  = e.netAmount > 0 ? "净买入" : (e.netAmount < 0 ? "净卖出" : "持平");
+                String dirText  = (e.netAmount != 0) ? "净" : "";
                 String netSign  = e.netShares > 0 ? "+" : (e.netShares < 0 ? "-" : "");
-                mainLine = String.format("%s %s %s  ·  %s%s股%s",
+                mainLine = String.format("%s%s %s·%s%s%s",
                         dirEmoji, dirText, formatAmount(Math.abs(e.netAmount)),
                         netSign, formatNumber(Math.abs(e.netShares)), pctTail);
-                tradeDetail = String.format("买 %s(%s) │ 卖 %s(%s)",
+                tradeDetail = String.format("买 %s(%s) 卖 %s(%s)",
                         formatNumber(e.buyShares),  formatAmount(e.buyAmount),
                         formatNumber(e.sellShares), formatAmount(e.sellAmount));
             } else if (e.buyShares > 0) {
-                mainLine = String.format("🟢 买入 %s  ·  %s股 @ $%.2f%s",
+                mainLine = String.format("🟢 %s·%s@$%.0f%s",
                         formatAmount(e.buyAmount), formatNumber(e.buyShares), e.price, pctTail);
             } else {
-                mainLine = String.format("🔴 卖出 %s  ·  %s股 @ $%.2f%s",
+                mainLine = String.format("🔴 %s·%s@$%.0f%s",
                         formatAmount(e.sellAmount), formatNumber(e.sellShares), e.price, pctTail);
             }
 
             // 颜色前缀: 主动买=绿(+) / 主动卖=红(-) / 10b5-1=灰(空格)
             String p;
-            if (e.is10b51)                 p = " ";
-            else if ("BUY".equals(e.type)) p = "+";
-            else                           p = "-";
+            if (e.is10b51)                  p = " ";
+            else if ("BUY".equals(e.type))  p = "+";
+            else                            p = "-";
 
             msg.append("```diff\n");
             msg.append(p).append(' ').append(ticker)
-               .append(" · ").append(e.ownerName).append(position).append(plan).append('\n');
+               .append('·').append(e.ownerName).append(position).append(plan).append('\n');
             msg.append(p).append(' ').append(mainLine).append('\n');
             if (tradeDetail != null) {
                 msg.append(p).append(' ').append(tradeDetail).append('\n');
             }
             msg.append(p).append(' ').append(holdingStr)
-               .append("  ·  ").append(date).append('\n');
+               .append('·').append(date).append('\n');
             msg.append("```\n");
         }
     }
