@@ -288,10 +288,20 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
     msg.append("🔔 **Insider Alerts** · ").append(today).append("\n");
 
-    for (Map.Entry<String, List<AlertEntry>> entry : alertsByTicker.entrySet()) {
-        String ticker = entry.getKey();
-        for (AlertEntry e : entry.getValue()) {
-            // 日期：去掉年份，只留 MM-DD
+    for (Map.Entry<String, List<AlertEntry>> tickerEntry : alertsByTicker.entrySet()) {
+        String ticker = tickerEntry.getKey();
+        List<AlertEntry> entries = tickerEntry.getValue();
+
+        msg.append("```diff\n");
+        msg.append("@@ ").append(ticker)
+           .append("  (").append(entries.size()).append(" 笔)").append(" @@\n");
+
+        boolean first = true;
+        for (AlertEntry e : entries) {
+            if (!first) msg.append("  ──────────────\n");
+            first = false;
+
+            // 日期：MM-DD
             String date = e.transactionDate.isEmpty() ? "N/A"
                     : (e.transactionDate.length() >= 10
                             ? e.transactionDate.substring(5)
@@ -301,7 +311,7 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
             String position = (e.position == null || e.position.isBlank()
                     || "Unknown Position".equals(e.position)) ? "" : "·" + e.position;
 
-            // 变动百分比 (带正负号)
+            // 变动百分比
             long beforeShares = e.sharesOwnedAfter - e.netShares;
             String pctStr = "";
             if (beforeShares > 0) {
@@ -323,7 +333,7 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
                 holdingStr = "持 N/A";
             }
 
-            // 主行 & 可选 buy/sell 明细
+            // 主行
             String mainLine;
             String tradeDetail = null;
             boolean isMixed = e.buyShares > 0 && e.sellShares > 0;
@@ -346,23 +356,20 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
                         formatAmount(e.sellAmount), formatNumber(e.sellShares), e.price, pctTail);
             }
 
-            // 颜色前缀: 主动买=绿(+) / 主动卖=红(-) / 10b5-1=灰(空格)
+            // 行前缀: 主动买=绿(+) / 主动卖=红(-) / 10b5-1=灰(空格)
             String p;
             if (e.is10b51)                  p = " ";
             else if ("BUY".equals(e.type))  p = "+";
             else                            p = "-";
 
-            msg.append("```diff\n");
-            msg.append(p).append(' ').append(ticker)
-               .append('·').append(e.ownerName).append(position).append(plan).append('\n');
+            msg.append(p).append(' ').append(e.ownerName).append(position).append(plan).append('\n');
             msg.append(p).append(' ').append(mainLine).append('\n');
             if (tradeDetail != null) {
                 msg.append(p).append(' ').append(tradeDetail).append('\n');
             }
-            msg.append(p).append(' ').append(holdingStr)
-               .append('·').append(date).append('\n');
-            msg.append("```\n");
+            msg.append(p).append(' ').append(holdingStr).append('·').append(date).append('\n');
         }
+        msg.append("```\n");
     }
     return msg.toString().trim();
 }
