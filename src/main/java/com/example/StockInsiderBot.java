@@ -425,6 +425,8 @@ private static String buildGroupedNotification(Map<String, List<AlertEntry>> ale
         String code = transaction.path("transactionCoding").path("transactionCode").asText();
         if (!"P".equals(code) && !"S".equals(code)) return null;
 
+            logDebug("transactionCoding raw: " + transaction.path("transactionCoding").toString());
+
         if (!transaction.path("exerciseDate").isMissingNode() &&
                 !transaction.path("exerciseDate").asText().isBlank()) return null;
 
